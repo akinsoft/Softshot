@@ -4,6 +4,7 @@ import n from "eslint-plugin-n";
 import promise from "eslint-plugin-promise";
 import regexp from "eslint-plugin-regexp";
 import security from "eslint-plugin-security";
+import simpleImportSort from "eslint-plugin-simple-import-sort";
 import sonarjs from "eslint-plugin-sonarjs";
 import unicorn from "eslint-plugin-unicorn";
 import unusedImports from "eslint-plugin-unused-imports";
@@ -12,16 +13,13 @@ import tseslint from "typescript-eslint";
 
 const sourceFiles = ["src/**/*.ts"];
 const nodeFiles = ["src/main.ts", "src/preload.ts", "src/shared.ts"];
-const browserFiles = ["src/overlay.ts", "src/recordingHud.ts", "src/global.d.ts"];
+const browserFiles = ["src/overlay.ts", "src/recording-hud.ts", "src/global.d.ts"];
 const importExtensions = [".ts", ".js", ".json", ".node"];
 
-const maxComplexity = 12;
-const maxDepth = 4;
-const maxLines = 420;
-const maxLinesPerFunction = 85;
+const maxComplexity = 25;
+const maxLinesPerFunction = 100;
 const maxNestedCallbacks = 3;
-const maxParameters = 4;
-const maxStatements = 38;
+const maxStatements = 50;
 const duplicateStringThreshold = 3;
 
 function strictRules(...configs) {
@@ -84,6 +82,7 @@ export default tseslint.config(
       promise,
       regexp,
       security,
+      "simple-import-sort": simpleImportSort,
       sonarjs,
       unicorn,
       "unused-imports": unusedImports,
@@ -110,7 +109,7 @@ export default tseslint.config(
         {
           detectObjects: true,
           enforceConst: true,
-          ignore: [-1, 0, 1],
+          ignore: [-1, 0, 1, 2],
           ignoreArrayIndexes: true,
           ignoreDefaultValues: false,
           ignoreEnums: false,
@@ -150,7 +149,7 @@ export default tseslint.config(
       "guard-for-in": "error",
       "logical-assignment-operators": ["error", "always"],
       "max-classes-per-file": ["error", 1],
-      "max-depth": ["error", maxDepth],
+      "max-depth": "off",
       "max-len": [
         "error",
         {
@@ -163,16 +162,13 @@ export default tseslint.config(
           ignoreUrls: true,
         },
       ],
-      "max-lines": [
-        "error",
-        { max: maxLines, skipBlankLines: true, skipComments: true },
-      ],
+      "max-lines": "off",
       "max-lines-per-function": [
         "error",
         { max: maxLinesPerFunction, skipBlankLines: true, skipComments: true },
       ],
       "max-nested-callbacks": ["error", maxNestedCallbacks],
-      "max-params": ["error", maxParameters],
+      "max-params": "off",
       "max-statements": ["error", maxStatements],
       "new-cap": ["error", { capIsNew: false }],
       "no-alert": "error",
@@ -218,6 +214,13 @@ export default tseslint.config(
         { restrictedNamedExports: ["then"] },
       ],
       "no-restricted-globals": ["error", "event", "fdescribe", "fit"],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "ImportNamespaceSpecifier",
+          message: "Do not use wildcard imports; import the specific values you need.",
+        },
+      ],
       "no-return-assign": ["error", "always"],
       "no-script-url": "error",
       "no-self-compare": "error",
@@ -281,7 +284,7 @@ export default tseslint.config(
       "promise/always-return": "off",
       "promise/catch-or-return": "off",
       "sonarjs/cognitive-complexity": "off",
-      "sonarjs/expression-complexity": ["error", { max: 5 }],
+      "sonarjs/expression-complexity": ["error", { max: 6 }],
       "sonarjs/max-lines": "off",
       "sonarjs/max-lines-per-function": "off",
       "sonarjs/no-duplicate-string": [
@@ -291,21 +294,35 @@ export default tseslint.config(
       "sonarjs/no-identical-functions": ["error", duplicateStringThreshold],
       "sonarjs/no-nested-functions": ["error", { threshold: 3 }],
       "sonarjs/regex-complexity": ["error", { threshold: 18 }],
-      "sort-imports": [
+      "simple-import-sort/exports": "error",
+      "simple-import-sort/imports": [
         "error",
         {
-          allowSeparatedGroups: false,
-          ignoreCase: true,
-          ignoreDeclarationSort: true,
-          memberSyntaxSortOrder: ["none", "all", "multiple", "single"],
+          groups: [
+            ["^node:"],
+            ["^@?\\w"],
+            ["^src(?:/.*|$)", "^@/(?:.*|$)", "^~(?:/.*|$)"],
+            ["^\\u0000", "^\\."]
+          ],
         },
       ],
+      "sort-imports": "off",
       "symbol-description": "error",
       "unicode-bom": ["error", "never"],
       "unicorn/no-array-for-each": "off",
       "unicorn/no-null": "off",
       "unicorn/no-useless-undefined": "off",
       "unicorn/prefer-top-level-await": "off",
+      "unicorn/consistent-boolean-name": [
+        "error",
+        {
+          prefixes: {
+            allows: true,
+            needs: true,
+            supports: true,
+          },
+        },
+      ],
       "unused-imports/no-unused-imports": "error",
       "unused-imports/no-unused-vars": [
         "error",

@@ -1,17 +1,17 @@
 import {
   app,
   BrowserWindow,
-  Menu,
-  Notification,
-  Tray,
   clipboard,
   desktopCapturer,
   dialog,
   globalShortcut,
   ipcMain,
+  Menu,
   nativeImage,
+  Notification,
   screen,
-  shell
+  shell,
+  Tray
 } from "electron";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -23,15 +23,13 @@ const backupShortcuts = ["Control+Shift+PrintScreen", "Control+Alt+S"] as const;
 
 let tray: Tray | null = null;
 let activeOverlay: BrowserWindow | null = null;
-let printScreenUnavailable = false;
+let isPrintScreenUnavailable = false;
 let registeredShortcuts: string[] = [];
 
 const overlayDataByWebContents = new Map<number, OverlayBootstrap>();
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+const isGotSingleInstanceLock = app.requestSingleInstanceLock();
 
-if (!gotSingleInstanceLock) {
-  app.quit();
-} else {
+if (isGotSingleInstanceLock) {
   app.on("second-instance", () => {
     capture();
   });
@@ -46,6 +44,8 @@ if (!gotSingleInstanceLock) {
       setTimeout(capture, 300);
     }
   });
+} else {
+  app.quit();
 }
 
 app.on("will-quit", () => {
@@ -60,7 +60,7 @@ function registerCaptureShortcuts(): void {
     return;
   }
 
-  printScreenUnavailable = true;
+  isPrintScreenUnavailable = true;
   registeredShortcuts = backupShortcuts.filter(registerCaptureShortcut);
 }
 
@@ -76,7 +76,7 @@ function capture(): void {
 }
 
 async function showShortcutWarningIfNeeded(): Promise<void> {
-  if (!printScreenUnavailable || process.env.SOFTSHOT_SKIP_SHORTCUT_WARNING === "1") {
+  if (!isPrintScreenUnavailable || process.env.SOFTSHOT_SKIP_SHORTCUT_WARNING === "1") {
     return;
   }
 
@@ -331,7 +331,7 @@ function pngBufferFromDataUrl(dataUrl: string): Buffer {
     throw new Error("Screenshots must be PNG data URLs.");
   }
 
-  return Buffer.from(dataUrl.split(",")[1] ?? "", "base64");
+  return Buffer.from(dataUrl.split(",", 2)[1] ?? "", "base64");
 }
 
 function closeSenderWindow(event: Electron.IpcMainInvokeEvent): void {
@@ -358,7 +358,7 @@ function trayMenuTemplate(): Electron.MenuItemConstructorOptions[] {
     }
   ];
 
-  if (printScreenUnavailable) {
+  if (isPrintScreenUnavailable) {
     template.push(
       {
         label: `${primaryShortcut} unavailable`,
@@ -428,20 +428,20 @@ function timestamp(): string {
   const value = new Date();
   const pad = (part: number) => part.toString().padStart(2, "0");
 
-  return [
+  return `${[
     value.getFullYear(),
     pad(value.getMonth() + 1),
     pad(value.getDate())
-  ].join("-") + " " + [
+  ].join("-")  } ${  [
     pad(value.getHours()),
     pad(value.getMinutes()),
     pad(value.getSeconds())
-  ].join(".");
+  ].join(".")}`;
 }
 
 function ipcHandle<T extends unknown[], R>(
   channel: string,
-  listener: (event: Electron.IpcMainInvokeEvent, ...args: T) => R | Promise<R>
+  listener: (event: Electron.IpcMainInvokeEvent, ...arguments_: T) => R | Promise<R>
 ): void {
   ipcMain.handle(channel, listener);
 }

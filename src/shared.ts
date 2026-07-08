@@ -1,7 +1,17 @@
+export const videoFpsOptions = {
+  standard: 30,
+  high: 60
+} as const;
+
+export const videoQualityHeights = {
+  low: 720,
+  high: 1080
+} as const;
+
 export type CaptureMode = "screenshot" | "video";
 export type DrawingTool = "select" | "pen" | "arrow";
 export type VideoQuality = "720p" | "1080p";
-export type VideoFps = 30 | 60;
+export type VideoFps = (typeof videoFpsOptions)[keyof typeof videoFpsOptions];
 
 export interface Rect {
   x: number;

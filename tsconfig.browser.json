@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ES2022"
+  },
+  "include": [
+    "src/global.d.ts",
+    "src/overlay.ts",
+    "src/overlay-*.ts",
+    "src/recording-*.ts",
+    "src/shared.ts"
+  ]
+}

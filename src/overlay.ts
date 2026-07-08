@@ -1,1045 +1,725 @@
-type CaptureMode = "screenshot" | "video";
-type DrawingTool = "select" | "pen" | "arrow";
-type VideoQuality = "720p" | "1080p";
-type VideoFps = 30 | 60;
-type VideoButtonState = "video" | "start" | "stop";
+import { getCanvasContext, getRequiredElement, loadImage } from "./overlay-dom.js";
+import { drawAnnotations, drawArrow, drawSelectionFrame } from "./overlay-drawing.js";
+import {
+  clampPointToRect,
+  defaultCaptureMode,
+  defaultDrawingTool,
+  defaultPenColor,
+  defaultVideoQuality,
+  distance,
+  eventPoint,
+  isPointInRect,
+  minimumArrowLengthPx,
+  minimumSelectionSizePx,
+  normalizeArrow,
+  normalizeRect
+} from "./overlay-model.js";
+import { RecordingHudController } from "./recording-hud.js";
+import { RecordingSession } from "./recording-session.js";
+import { videoFpsOptions } from "./shared.js";
+import type {
+  Annotation,
+  ArrowAnnotation,
+  DragState,
+  PenAnnotation,
+  Point,
+  VideoButtonState
+} from "./overlay-model.js";
+import type { CaptureMode, OverlayBootstrap, Rect, VideoFps, VideoQuality } from "./shared.js";
 
-interface Rect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
+const canvasContextError = "Could not create the overlay drawing context.";
+const copyShortcutKey = "c";
+const defaultDevicePixelRatio = 1;
+const dimColor = "rgba(0, 0, 0, 0.44)";
+const enterKey = "Enter";
+const escapeKey = "Escape";
+const frameScale = { x: 1, y: 1 };
+const screenshotCanvasContextError = "Could not create the screenshot canvas.";
+const spaceKey = " ";
+const toolbarPulseDurationMs = 160;
+const videoButtonAnimationDurationMs = 220;
+const zeroPoint = { x: 0, y: 0 };
+const countdownValues = [3, 2, 1, 0] as const;
+const countdownStepMs = 1000;
+const countdownZeroHoldMs = 500;
+const runIdIncrement = 1;
+const videoButtonPopKeyframes = [
+  { transform: "scale(1)" },
+  { transform: "scale(1.08)" },
+  { transform: "scale(1)" }
+] satisfies Keyframe[];
 
-interface OverlayBootstrap {
-  sourceId: string;
-  imageDataUrl: string;
-  displayBounds: Rect;
-  scaleFactor: number;
-}
+class OverlayApp {
+  private readonly arrowButton = getRequiredElement("arrow-button", HTMLButtonElement);
+  private readonly canvas = getRequiredElement("annotation-canvas", HTMLCanvasElement);
+  private readonly closeButton = getRequiredElement("close-button", HTMLButtonElement);
+  private readonly colorButton = getRequiredElement("color-button", HTMLButtonElement);
+  private readonly colorMenu = getRequiredElement("color-menu", HTMLDivElement);
+  private readonly context = getCanvasContext(this.canvas, canvasContextError);
+  private readonly penButton = getRequiredElement("pen-button", HTMLButtonElement);
+  private readonly recordingHud = new RecordingHudController();
+  private readonly screenImage = getRequiredElement("screen-image", HTMLImageElement);
+  private readonly screenshotButton = getRequiredElement("screenshot-button", HTMLButtonElement);
+  private readonly settingsButton = getRequiredElement("settings-button", HTMLButtonElement);
+  private readonly settingsMenu = getRequiredElement("settings-menu", HTMLDivElement);
+  private readonly videoButton = getRequiredElement("video-button", HTMLButtonElement);
+  private activeTool = defaultDrawingTool;
+  private annotations: Annotation[] = [];
+  private bootstrap: OverlayBootstrap | null = null;
+  private captureMode: CaptureMode = defaultCaptureMode;
+  private countdownRunId = 0;
+  private dragState: DragState = null;
+  private fps: VideoFps = videoFpsOptions.high;
+  private isCountingDown = false;
+  private isRecording = false;
+  private isRenderQueued = false;
+  private quality: VideoQuality = defaultVideoQuality;
+  private recordingSession: RecordingSession | null = null;
+  private selectedColor = defaultPenColor;
+  private selection: Rect | null = null;
 
-type Point = {
-  x: number;
-  y: number;
-};
-
-type PenAnnotation = {
-  kind: "pen";
-  color: string;
-  points: Point[];
-};
-
-type ArrowAnnotation = {
-  kind: "arrow";
-  color: string;
-  from: Point;
-  to: Point;
-};
-
-type Annotation = PenAnnotation | ArrowAnnotation;
-type DragState =
-  | { kind: "select"; start: Point; current: Point }
-  | { kind: "pen"; annotation: PenAnnotation }
-  | { kind: "arrow"; start: Point; current: Point }
-  | null;
-
-const screenImage = element<HTMLImageElement>("screen-image");
-const canvas = element<HTMLCanvasElement>("annotation-canvas");
-const screenshotButton = element<HTMLButtonElement>("screenshot-button");
-const videoButton = element<HTMLButtonElement>("video-button");
-const penButton = element<HTMLButtonElement>("pen-button");
-const arrowButton = element<HTMLButtonElement>("arrow-button");
-const colorButton = element<HTMLButtonElement>("color-button");
-const settingsButton = element<HTMLButtonElement>("settings-button");
-const closeButton = element<HTMLButtonElement>("close-button");
-const colorMenu = element<HTMLDivElement>("color-menu");
-const settingsMenu = element<HTMLDivElement>("settings-menu");
-const recordingHud = new RecordingHudController();
-
-const context = canvasContext(canvas, "Could not create the overlay drawing context.");
-
-let bootstrap: OverlayBootstrap | null = null;
-let captureMode: CaptureMode = "screenshot";
-let activeTool: DrawingTool = "select";
-let selectedColor = "#38bdf8";
-let quality: VideoQuality = "1080p";
-let fps: VideoFps = 60;
-let selection: Rect | null = null;
-let dragState: DragState = null;
-let annotations: Annotation[] = [];
-let needsRender = false;
-let isRecording = false;
-let isCountingDown = false;
-let countdownValue: number | null = null;
-let countdownRunId = 0;
-let recordingSession: RecordingSession | null = null;
-
-void initialize();
-
-async function initialize(): Promise<void> {
-  try {
-    bootstrap = await window.softshot.getBootstrap();
-    await loadImage(screenImage, bootstrap.imageDataUrl, "Timed out loading the frozen screen image.");
-
-    resizeCanvas();
-    bindEvents();
-    syncToolbar();
-    await renderOnce();
-    await window.softshot.readyToShow();
-  } catch (error) {
-    await reportError("Could not prepare the capture overlay.", error);
-    await closeOverlay();
-  }
-}
-
-function bindEvents(): void {
-  window.addEventListener("resize", () => {
-    resizeCanvas();
-    recordingHud.refresh();
-    requestRender();
-  });
-
-  window.addEventListener("pointerdown", onPointerDown);
-  window.addEventListener("pointermove", onPointerMove);
-  window.addEventListener("pointerup", onPointerUp);
-  window.addEventListener("pointercancel", cancelDrag);
-
-  window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      void closeOverlay();
-      return;
-    }
-
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
-      event.preventDefault();
-      void copyScreenshot();
-      return;
-    }
-
-    if (event.key === "Enter" && captureMode === "screenshot") {
-      void saveScreenshot();
-      return;
-    }
-
-    if (event.key === " " && captureMode === "video") {
-      event.preventDefault();
-      void toggleRecording();
-    }
-  });
-
-  document.querySelector(".toolbar")?.addEventListener("pointerdown", (event) => {
-    event.stopPropagation();
-  });
-
-  screenshotButton.addEventListener("click", () => {
-    closeMenus();
-    captureMode = "screenshot";
-    activeTool = "select";
-    syncToolbar();
-
-    if (selection) {
-      void saveScreenshot();
-    }
-  });
-
-  videoButton.addEventListener("click", () => {
-    closeMenus();
-    if (captureMode !== "video") {
-      enterVideoMode();
-      return;
-    }
-
-    void toggleRecording();
-  });
-
-  penButton.addEventListener("click", () => {
-    closeMenus();
-    activeTool = "pen";
-    syncToolbar();
-  });
-
-  arrowButton.addEventListener("click", () => {
-    closeMenus();
-    activeTool = "arrow";
-    syncToolbar();
-  });
-
-  colorButton.addEventListener("click", () => {
-    settingsMenu.hidden = true;
-    colorMenu.hidden = !colorMenu.hidden;
-  });
-
-  settingsButton.addEventListener("click", () => {
-    colorMenu.hidden = true;
-    settingsMenu.hidden = !settingsMenu.hidden;
-  });
-
-  closeButton.addEventListener("click", () => {
-    void closeOverlay();
-  });
-
-  colorMenu.addEventListener("click", (event) => {
-    const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-color]");
-    if (!button) {
-      return;
-    }
-
-    selectedColor = button.dataset.color ?? selectedColor;
-    syncToolbar();
-    requestRender();
-  });
-
-  settingsMenu.addEventListener("click", (event) => {
-    const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-quality], [data-fps]");
-    if (!button || isRecording || isCountingDown) {
-      return;
-    }
-
-    if (button.dataset.quality === "720p" || button.dataset.quality === "1080p") {
-      quality = button.dataset.quality;
-    }
-
-    if (button.dataset.fps === "30" || button.dataset.fps === "60") {
-      fps = Number(button.dataset.fps) as VideoFps;
-    }
-
-    syncToolbar();
-  });
-
-  window.addEventListener("pointerdown", (event) => {
-    if (!(event.target as HTMLElement).closest(".toolbar")) {
-      closeMenus();
-    }
-  });
-}
-
-function onPointerDown(event: PointerEvent): void {
-  if ((event.target as HTMLElement).closest(".toolbar") || isCountingDown || isRecording && activeTool === "select") {
-    return;
-  }
-
-  const point = eventPoint(event);
-
-  if (!selection || activeTool === "select") {
-    dragState = { kind: "select", start: point, current: point };
-    canvas.setPointerCapture(event.pointerId);
-    requestRender();
-    return;
-  }
-
-  if (!pointInRect(point, selection)) {
-    activeTool = "select";
-    dragState = { kind: "select", start: point, current: point };
-    canvas.setPointerCapture(event.pointerId);
-    syncToolbar();
-    requestRender();
-    return;
-  }
-
-  if (activeTool === "pen") {
-    const annotation: PenAnnotation = {
-      kind: "pen",
-      color: selectedColor,
-      points: [point]
-    };
-    annotations.push(annotation);
-    dragState = { kind: "pen", annotation };
-    canvas.setPointerCapture(event.pointerId);
-    requestRender();
-    return;
-  }
-
-  if (activeTool === "arrow") {
-    dragState = { kind: "arrow", start: point, current: point };
-    canvas.setPointerCapture(event.pointerId);
-    requestRender();
-  }
-}
-
-function onPointerMove(event: PointerEvent): void {
-  if (!dragState) {
-    return;
-  }
-
-  const point = eventPoint(event);
-
-  if (dragState.kind === "select") {
-    dragState.current = point;
-  }
-
-  if (dragState.kind === "pen") {
-    dragState.annotation.points.push(clampToSelection(point));
-  }
-
-  if (dragState.kind === "arrow") {
-    dragState.current = clampToSelection(point);
-  }
-
-  requestRender();
-}
-
-function onPointerUp(event: PointerEvent): void {
-  if (!dragState) {
-    return;
-  }
-
-  const completedDrag = dragState;
-  dragState = null;
-
-  if (canvas.hasPointerCapture(event.pointerId)) {
-    canvas.releasePointerCapture(event.pointerId);
-  }
-
-  if (completedDrag.kind === "select") {
-    const nextSelection = normalizeRect(completedDrag.start, completedDrag.current);
-    if (nextSelection.width >= 8 && nextSelection.height >= 8) {
-      selection = nextSelection;
-      annotations = [];
-      activeTool = "select";
-      recordingHud.setSelection(selection);
+  async initialize(): Promise<void> {
+    try {
+      this.bootstrap = await window.softshot.getBootstrap();
+      await loadImage(this.screenImage, this.bootstrap.imageDataUrl, "Timed out loading the frozen screen image.");
+      this.resizeCanvas();
+      this.bindEvents();
+      this.syncToolbar();
+      await this.renderOnce();
+      await window.softshot.readyToShow();
+    } catch (error) {
+      await this.reportError("Could not prepare the capture overlay.", error);
+      await this.closeOverlay();
     }
   }
 
-  if (completedDrag.kind === "arrow") {
-    const arrow = normalizeArrow({
-      kind: "arrow",
-      color: selectedColor,
-      from: completedDrag.start,
-      to: completedDrag.current
+  private bindEvents(): void {
+    addEventListener("resize", (): void => {
+      this.resizeCanvas();
+      this.recordingHud.refresh();
+      this.requestRender();
     });
-    if (distance(arrow.from, arrow.to) >= 6) {
-      annotations.push(arrow);
-    }
+    this.bindPointerEvents();
+    this.bindKeyboardEvents();
+    this.bindToolbarEvents();
+    this.bindMenuEvents();
   }
 
-  syncToolbar();
-  requestRender();
-}
+  private bindKeyboardEvents(): void {
+    addEventListener("keydown", (event): void => {
+      if (event.key === escapeKey) {
+        this.closeOverlay().catch((error: unknown): Promise<void> => this.reportError("Could not close the overlay.", error));
+        return;
+      }
 
-function cancelDrag(): void {
-  dragState = null;
-  requestRender();
-}
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === copyShortcutKey) {
+        event.preventDefault();
+        this.copyScreenshot().catch((error: unknown): Promise<void> => this.reportError("Could not copy the screenshot.", error));
+        return;
+      }
 
-async function saveScreenshot(): Promise<void> {
-  try {
-    const dataUrl = renderSelectionDataUrl();
-    if (!dataUrl) {
+      if (event.key === enterKey && this.captureMode === "screenshot") {
+        this.saveScreenshot().catch((error: unknown): Promise<void> => this.reportError("Could not save the screenshot.", error));
+        return;
+      }
+
+      if (event.key === spaceKey && this.captureMode === "video") {
+        event.preventDefault();
+        this.toggleRecording().catch((error: unknown): Promise<void> => this.reportError("Could not toggle recording.", error));
+      }
+    });
+  }
+
+  private bindMenuEvents(): void {
+    this.colorMenu.addEventListener("click", (event): void => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-color]");
+      if (!button) {
+        return;
+      }
+
+      this.selectedColor = button.dataset.color ?? this.selectedColor;
+      this.syncToolbar();
+      this.requestRender();
+    });
+
+    this.settingsMenu.addEventListener("click", (event): void => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-quality], [data-fps]");
+      if (!button || this.isRecording || this.isCountingDown) {
+        return;
+      }
+
+      this.updateRecordingSetting(button);
+      this.syncToolbar();
+    });
+
+    addEventListener("pointerdown", (event): void => {
+      if (!(event.target as HTMLElement).closest(".toolbar")) {
+        this.closeMenus();
+      }
+    });
+  }
+
+  private bindPointerEvents(): void {
+    addEventListener("pointerdown", (event): void => {
+      this.onPointerDown(event);
+    });
+    addEventListener("pointermove", (event): void => {
+      this.onPointerMove(event);
+    });
+    addEventListener("pointerup", (event): void => {
+      this.onPointerUp(event);
+    });
+    addEventListener("pointercancel", (): void => {
+      this.cancelDrag();
+    });
+  }
+
+  private bindToolbarEvents(): void {
+    document.querySelector(".toolbar")?.addEventListener("pointerdown", (event): void => {
+      event.stopPropagation();
+    });
+    this.screenshotButton.addEventListener("click", (): void => {
+      this.onScreenshotButtonClick();
+    });
+    this.videoButton.addEventListener("click", (): void => {
+      this.onVideoButtonClick();
+    });
+    this.penButton.addEventListener("click", (): void => {
+      this.selectTool("pen");
+    });
+    this.arrowButton.addEventListener("click", (): void => {
+      this.selectTool("arrow");
+    });
+    this.colorButton.addEventListener("click", (): void => {
+      this.settingsMenu.hidden = true;
+      this.colorMenu.hidden = !this.colorMenu.hidden;
+    });
+    this.settingsButton.addEventListener("click", (): void => {
+      this.colorMenu.hidden = true;
+      this.settingsMenu.hidden = !this.settingsMenu.hidden;
+    });
+    this.closeButton.addEventListener("click", (): void => {
+      this.closeOverlay().catch((error: unknown): Promise<void> => this.reportError("Could not close the overlay.", error));
+    });
+  }
+
+  private cancelCountdown(): void {
+    this.countdownRunId += runIdIncrement;
+    this.isCountingDown = false;
+    this.recordingHud.clearCountdown();
+    this.syncToolbar();
+    this.requestRender();
+  }
+
+  private cancelDrag(): void {
+    this.dragState = null;
+    this.requestRender();
+  }
+
+  private closeMenus(): void {
+    this.colorMenu.hidden = true;
+    this.settingsMenu.hidden = true;
+  }
+
+  private async closeOverlay(): Promise<void> {
+    if (this.isCountingDown) {
+      this.cancelCountdown();
+    }
+
+    if (this.isRecording) {
+      await this.stopRecording();
       return;
     }
 
-    await window.softshot.saveScreenshot(dataUrl);
-  } catch (error) {
-    await reportError("Could not save the screenshot.", error);
+    await window.softshot.closeOverlay();
   }
-}
 
-async function copyScreenshot(): Promise<void> {
-  try {
-    const dataUrl = renderSelectionDataUrl();
+  private async copyScreenshot(): Promise<void> {
+    const dataUrl = this.renderSelectionDataUrl();
     if (!dataUrl) {
       return;
     }
 
     await window.softshot.copyScreenshot(dataUrl);
-  } catch (error) {
-    await reportError("Could not copy the screenshot.", error);
-  }
-}
-
-function renderSelectionDataUrl(): string | null {
-  if (!selection) {
-    pulseToolbar();
-    return null;
   }
 
-  const output = document.createElement("canvas");
-  const imageScaleX = screenImage.naturalWidth / window.innerWidth;
-  const imageScaleY = screenImage.naturalHeight / window.innerHeight;
-  output.width = Math.max(1, Math.round(selection.width * imageScaleX));
-  output.height = Math.max(1, Math.round(selection.height * imageScaleY));
-
-  const outputContext = canvasContext(output, "Could not create the screenshot canvas.");
-  outputContext.drawImage(
-    screenImage,
-    selection.x * imageScaleX,
-    selection.y * imageScaleY,
-    selection.width * imageScaleX,
-    selection.height * imageScaleY,
-    0,
-    0,
-    output.width,
-    output.height
-  );
-
-  drawAnnotations(outputContext, {
-    offset: { x: selection.x, y: selection.y },
-    scale: { x: output.width / selection.width, y: output.height / selection.height },
-    clip: selection
-  });
-
-  return output.toDataURL("image/png");
-}
-
-async function toggleRecording(): Promise<void> {
-  enterVideoMode();
-
-  if (isRecording) {
-    await stopRecording();
-    return;
-  }
-
-  if (isCountingDown) {
-    cancelCountdown();
-    return;
-  }
-
-  if (!selection) {
-    syncToolbar();
-    pulseToolbar();
-    return;
-  }
-
-  await startRecordingCountdown();
-}
-
-function enterVideoMode(): void {
-  captureMode = "video";
-  activeTool = "select";
-  syncToolbar();
-}
-
-async function startRecordingCountdown(): Promise<void> {
-  if (!selection || isRecording || isCountingDown) {
-    return;
-  }
-
-  const runId = ++countdownRunId;
-  isCountingDown = true;
-  syncToolbar();
-
-  for (const value of [3, 2, 1, 0]) {
-    if (!isCountingDown || runId !== countdownRunId) {
+  private drawCurrentArrow(): void {
+    if (this.dragState?.kind !== "arrow") {
       return;
     }
 
-    countdownValue = value;
-    recordingHud.setCountdown(value);
-    requestRender();
-    await delay(value === 0 ? 500 : 1000);
-  }
-
-  if (!isCountingDown || runId !== countdownRunId) {
-    return;
-  }
-
-  isCountingDown = false;
-  countdownValue = null;
-  recordingHud.clearCountdown();
-  await startRecording();
-}
-
-function cancelCountdown(): void {
-  countdownRunId++;
-  isCountingDown = false;
-  countdownValue = null;
-  recordingHud.clearCountdown();
-  syncToolbar();
-  requestRender();
-}
-
-async function startRecording(): Promise<void> {
-  if (!bootstrap || !selection || isRecording) {
-    return;
-  }
-
-  try {
-    captureMode = "video";
-    isRecording = true;
-    syncToolbar();
-    recordingHud.showRecordingPending();
-    requestRender();
-
-    const sourceStream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        mandatory: {
-          chromeMediaSource: "desktop",
-          chromeMediaSourceId: bootstrap.sourceId,
-          maxFrameRate: fps
-        }
-      } as MediaTrackConstraints
-    });
-
-    const sourceVideo = document.createElement("video");
-    sourceVideo.muted = true;
-    sourceVideo.playsInline = true;
-    sourceVideo.srcObject = sourceStream;
-    await sourceVideo.play();
-    await waitForVideoMetadata(sourceVideo);
-
-    const outputSize = videoOutputSize(selection, quality);
-    const outputCanvas = document.createElement("canvas");
-    outputCanvas.width = outputSize.width;
-    outputCanvas.height = outputSize.height;
-
-    const outputContext = outputCanvas.getContext("2d");
-    if (!outputContext) {
-      throw new Error("Could not create the recording canvas.");
-    }
-
-    const outputStream = outputCanvas.captureStream(fps);
-    const recorder = new MediaRecorder(outputStream, {
-      mimeType: supportedVideoMimeType(),
-      videoBitsPerSecond: videoBitrate(quality, fps)
-    });
-
-    const chunks: Blob[] = [];
-    recorder.addEventListener("dataavailable", (event) => {
-      if (event.data.size > 0) {
-        chunks.push(event.data);
-      }
-    });
-
-    recorder.addEventListener("stop", () => {
-      void finishRecording(chunks, sourceStream, outputStream);
-    });
-
-    recordingSession = new RecordingSession({
-      recorder,
-      sourceStream,
-      outputStream,
-      sourceVideo,
-      outputCanvas,
-      outputContext,
-      animationHandle: null,
-      crop: { ...selection },
-      outputSize
-    });
-
-    drawRecordingFrame();
-    recorder.start(500);
-    recordingHud.startRecordingTimer();
-  } catch (error) {
-    isRecording = false;
-    recordingHud.stopRecording();
-    recordingSession?.stopTracks();
-    recordingSession = null;
-    syncToolbar();
-    await reportError("Could not start the recording.", error);
-  }
-}
-
-async function stopRecording(): Promise<void> {
-  if (!recordingSession || recordingSession.recorder.state === "inactive") {
-    return;
-  }
-
-  recordingSession.recorder.stop();
-}
-
-async function finishRecording(chunks: Blob[], sourceStream: MediaStream, outputStream: MediaStream): Promise<void> {
-  const session = recordingSession;
-  recordingSession = null;
-  isRecording = false;
-  recordingHud.stopRecording();
-  syncToolbar();
-
-  if (session?.animationHandle !== null && session?.animationHandle !== undefined) {
-    cancelAnimationFrame(session.animationHandle);
-  }
-
-  stopTracks(sourceStream);
-  stopTracks(outputStream);
-
-  try {
-    const blob = new Blob(chunks, { type: supportedVideoMimeType() });
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    await window.softshot.saveVideo(bytes);
-  } catch (error) {
-    await reportError("Could not save the recording.", error);
-  }
-}
-
-function drawRecordingFrame(): void {
-  if (!recordingSession) {
-    return;
-  }
-
-  const { sourceVideo, outputCanvas, outputContext, crop } = recordingSession;
-  const sourceScaleX = sourceVideo.videoWidth / window.innerWidth;
-  const sourceScaleY = sourceVideo.videoHeight / window.innerHeight;
-
-  outputContext.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-  outputContext.drawImage(
-    sourceVideo,
-    crop.x * sourceScaleX,
-    crop.y * sourceScaleY,
-    crop.width * sourceScaleX,
-    crop.height * sourceScaleY,
-    0,
-    0,
-    outputCanvas.width,
-    outputCanvas.height
-  );
-
-  drawAnnotations(outputContext, {
-    offset: { x: crop.x, y: crop.y },
-    scale: { x: outputCanvas.width / crop.width, y: outputCanvas.height / crop.height },
-    clip: crop
-  });
-
-  recordingSession.animationHandle = requestAnimationFrame(drawRecordingFrame);
-}
-
-function requestRender(): void {
-  if (needsRender) {
-    return;
-  }
-
-  needsRender = true;
-  requestAnimationFrame(() => {
-    needsRender = false;
-    render();
-  });
-}
-
-function renderOnce(): Promise<void> {
-  return new Promise((resolve) => {
-    requestAnimationFrame(() => {
-      render();
-      resolve();
-    });
-  });
-}
-
-function render(): void {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  context.clearRect(0, 0, width, height);
-  context.fillStyle = "rgba(0, 0, 0, 0.44)";
-  context.fillRect(0, 0, width, height);
-
-  const activeSelection = dragState?.kind === "select" ? normalizeRect(dragState.start, dragState.current) : selection;
-  if (activeSelection) {
-    context.clearRect(activeSelection.x, activeSelection.y, activeSelection.width, activeSelection.height);
-    drawSelectionFrame(activeSelection);
-  }
-
-  drawAnnotations(context, { offset: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, clip: selection });
-
-  if (dragState?.kind === "arrow") {
-    drawArrow(context, {
+    drawArrow(this.context, {
+      color: this.selectedColor,
+      from: this.dragState.start,
       kind: "arrow",
-      color: selectedColor,
-      from: dragState.start,
-      to: dragState.current
+      to: this.dragState.current
     });
   }
 
-  recordingHud.refresh();
-}
-
-function drawSelectionFrame(rect: Rect): void {
-  context.save();
-  context.strokeStyle = isRecording || isCountingDown ? "#f87171" : "#38bdf8";
-  context.lineWidth = 2;
-  context.setLineDash([8, 7]);
-  context.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1);
-  context.restore();
-}
-
-function drawAnnotations(
-  targetContext: CanvasRenderingContext2D,
-  transform: { offset: Point; scale: Point; clip: Rect | null }
-): void {
-  targetContext.save();
-
-  if (transform.clip) {
-    targetContext.beginPath();
-    targetContext.rect(
-      (transform.clip.x - transform.offset.x) * transform.scale.x,
-      (transform.clip.y - transform.offset.y) * transform.scale.y,
-      transform.clip.width * transform.scale.x,
-      transform.clip.height * transform.scale.y
-    );
-    targetContext.clip();
+  private enterVideoMode(): void {
+    this.captureMode = "video";
+    this.activeTool = "select";
+    this.syncToolbar();
   }
 
-  targetContext.scale(transform.scale.x, transform.scale.y);
-  targetContext.translate(-transform.offset.x, -transform.offset.y);
+  private async finishRecording(bytes: Uint8Array): Promise<void> {
+    this.recordingSession?.stopTracks();
+    this.recordingSession = null;
+    this.isRecording = false;
+    this.recordingHud.stopRecording();
+    this.syncToolbar();
+    await window.softshot.saveVideo(bytes);
+  }
 
-  for (const annotation of annotations) {
-    if (annotation.kind === "pen") {
-      drawPen(targetContext, annotation);
+  private onPointerDown(event: PointerEvent): void {
+    if (this.shouldIgnorePointerDown(event)) {
+      return;
+    }
+
+    const point = eventPoint(event);
+    if (!this.selection || this.activeTool === "select") {
+      this.startSelectionDrag(point, event.pointerId);
+      return;
+    }
+
+    if (!isPointInRect(point, this.selection)) {
+      this.activeTool = "select";
+      this.startSelectionDrag(point, event.pointerId);
+      this.syncToolbar();
+      return;
+    }
+
+    this.startAnnotationDrag(point, event.pointerId);
+  }
+
+  private onPointerMove(event: PointerEvent): void {
+    if (!this.dragState) {
+      return;
+    }
+
+    const point = eventPoint(event);
+    if (this.dragState.kind === "select") {
+      this.dragState.current = point;
+    } else if (this.dragState.kind === "pen") {
+      this.dragState.annotation.points.push(clampPointToRect(point, this.selection));
     } else {
-      drawArrow(targetContext, annotation);
+      this.dragState.current = clampPointToRect(point, this.selection);
+    }
+
+    this.requestRender();
+  }
+
+  private onPointerUp(event: PointerEvent): void {
+    if (!this.dragState) {
+      return;
+    }
+
+    const completedDrag = this.dragState;
+    this.dragState = null;
+    this.releasePointerCapture(event.pointerId);
+    this.finishDrag(completedDrag);
+    this.syncToolbar();
+    this.requestRender();
+  }
+
+  private onScreenshotButtonClick(): void {
+    this.closeMenus();
+    this.captureMode = "screenshot";
+    this.activeTool = "select";
+    this.syncToolbar();
+
+    if (this.selection) {
+      this.saveScreenshot().catch((error: unknown): Promise<void> => this.reportError("Could not save the screenshot.", error));
     }
   }
 
-  targetContext.restore();
-}
+  private onVideoButtonClick(): void {
+    this.closeMenus();
+    if (this.captureMode !== "video") {
+      this.enterVideoMode();
+      return;
+    }
 
-function drawPen(targetContext: CanvasRenderingContext2D, annotation: PenAnnotation): void {
-  if (annotation.points.length < 2) {
-    return;
+    this.toggleRecording().catch((error: unknown): Promise<void> => this.reportError("Could not toggle recording.", error));
   }
 
-  targetContext.save();
-  targetContext.strokeStyle = annotation.color;
-  targetContext.lineWidth = 4;
-  targetContext.lineCap = "round";
-  targetContext.lineJoin = "round";
-  targetContext.beginPath();
-  targetContext.moveTo(annotation.points[0].x, annotation.points[0].y);
+  private pulseToolbar(): void {
+    const toolbar = document.querySelector<HTMLElement>(".toolbar");
+    if (!toolbar) {
+      return;
+    }
 
-  for (const point of annotation.points.slice(1)) {
-    targetContext.lineTo(point.x, point.y);
+    toolbar.animate(
+      [
+        { transform: "translateX(-50%) scale(1)" },
+        { transform: "translateX(-50%) scale(1.035)" },
+        { transform: "translateX(-50%) scale(1)" }
+      ],
+      { duration: toolbarPulseDurationMs, easing: "ease-out" }
+    );
   }
 
-  targetContext.stroke();
-  targetContext.restore();
-}
-
-function drawArrow(targetContext: CanvasRenderingContext2D, annotation: ArrowAnnotation): void {
-  const angle = Math.atan2(annotation.to.y - annotation.from.y, annotation.to.x - annotation.from.x);
-  const headLength = 16;
-  const headWidth = 10;
-  const base = {
-    x: annotation.to.x - headLength * Math.cos(angle),
-    y: annotation.to.y - headLength * Math.sin(angle)
-  };
-  const left = {
-    x: base.x + headWidth * Math.cos(angle - Math.PI / 2),
-    y: base.y + headWidth * Math.sin(angle - Math.PI / 2)
-  };
-  const right = {
-    x: base.x + headWidth * Math.cos(angle + Math.PI / 2),
-    y: base.y + headWidth * Math.sin(angle + Math.PI / 2)
-  };
-
-  targetContext.save();
-  targetContext.strokeStyle = annotation.color;
-  targetContext.fillStyle = annotation.color;
-  targetContext.lineWidth = 4;
-  targetContext.lineCap = "round";
-  targetContext.lineJoin = "round";
-  targetContext.beginPath();
-  targetContext.moveTo(annotation.from.x, annotation.from.y);
-  targetContext.lineTo(base.x, base.y);
-  targetContext.stroke();
-
-  targetContext.beginPath();
-  targetContext.moveTo(annotation.to.x, annotation.to.y);
-  targetContext.lineTo(left.x, left.y);
-  targetContext.lineTo(right.x, right.y);
-  targetContext.closePath();
-  targetContext.fill();
-  targetContext.restore();
-}
-
-function syncToolbar(): void {
-  const videoState = videoButtonState();
-  screenshotButton.classList.toggle("active", captureMode === "screenshot");
-  videoButton.classList.toggle("active", captureMode === "video");
-  videoButton.classList.toggle("recording", isRecording || isCountingDown);
-  videoButton.title = videoButtonTitle(videoState);
-  videoButton.setAttribute("aria-label", videoButton.title);
-  setVideoButtonState(videoState);
-  penButton.classList.toggle("active", activeTool === "pen");
-  arrowButton.classList.toggle("active", activeTool === "arrow");
-
-  document.documentElement.style.setProperty("--accent", selectedColor);
-
-  for (const button of colorMenu.querySelectorAll<HTMLButtonElement>("[data-color]")) {
-    button.classList.toggle("selected", button.dataset.color === selectedColor);
+  private releasePointerCapture(pointerId: number): void {
+    if (this.canvas.hasPointerCapture(pointerId)) {
+      this.canvas.releasePointerCapture(pointerId);
+    }
   }
 
-  for (const button of settingsMenu.querySelectorAll<HTMLButtonElement>("[data-quality]")) {
-    button.classList.toggle("selected", button.dataset.quality === quality);
+  private render(): void {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    this.context.clearRect(zeroPoint.x, zeroPoint.y, width, height);
+    this.context.fillStyle = dimColor;
+    this.context.fillRect(zeroPoint.x, zeroPoint.y, width, height);
+    this.renderSelection();
+    drawAnnotations(this.context, this.annotations, { clip: this.selection, offset: zeroPoint, scale: frameScale });
+    this.drawCurrentArrow();
+    this.recordingHud.refresh();
   }
 
-  for (const button of settingsMenu.querySelectorAll<HTMLButtonElement>("[data-fps]")) {
-    button.classList.toggle("selected", Number(button.dataset.fps) === fps);
-  }
-}
-
-function setVideoButtonState(state: VideoButtonState): void {
-  const previousState = videoButton.dataset.state;
-  videoButton.dataset.state = state;
-
-  for (const icon of videoButton.querySelectorAll<HTMLElement>("[data-video-icon]")) {
-    icon.classList.toggle("active", icon.dataset.videoIcon === state);
-  }
-
-  if (previousState && previousState !== state) {
-    videoButton.classList.remove("state-changing");
-    void videoButton.offsetWidth;
-    videoButton.classList.add("state-changing");
-  }
-}
-
-function videoButtonState(): VideoButtonState {
-  if (isRecording || isCountingDown) {
-    return "stop";
-  }
-
-  if (captureMode === "video" && selection) {
-    return "start";
-  }
-
-  return "video";
-}
-
-function videoButtonTitle(state: VideoButtonState): string {
-  if (state === "stop") {
-    return isCountingDown ? "Cancel countdown" : "Stop recording";
-  }
-
-  if (state === "start") {
-    return "Start recording";
-  }
-
-  return "Video";
-}
-
-function resizeCanvas(): void {
-  const ratio = window.devicePixelRatio || 1;
-  canvas.width = Math.round(window.innerWidth * ratio);
-  canvas.height = Math.round(window.innerHeight * ratio);
-  canvas.style.width = `${window.innerWidth}px`;
-  canvas.style.height = `${window.innerHeight}px`;
-  context.setTransform(ratio, 0, 0, ratio, 0, 0);
-}
-
-function normalizeRect(start: Point, end: Point): Rect {
-  const x = Math.min(start.x, end.x);
-  const y = Math.min(start.y, end.y);
-  const width = Math.abs(end.x - start.x);
-  const height = Math.abs(end.y - start.y);
-  return { x, y, width, height };
-}
-
-function normalizeArrow(annotation: ArrowAnnotation): ArrowAnnotation {
-  return {
-    ...annotation,
-    from: clampToSelection(annotation.from),
-    to: clampToSelection(annotation.to)
-  };
-}
-
-function clampToSelection(point: Point): Point {
-  if (!selection) {
-    return point;
-  }
-
-  return {
-    x: Math.min(Math.max(point.x, selection.x), selection.x + selection.width),
-    y: Math.min(Math.max(point.y, selection.y), selection.y + selection.height)
-  };
-}
-
-function pointInRect(point: Point, rect: Rect): boolean {
-  return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
-}
-
-function eventPoint(event: PointerEvent): Point {
-  return {
-    x: event.clientX,
-    y: event.clientY
-  };
-}
-
-function distance(from: Point, to: Point): number {
-  return Math.hypot(to.x - from.x, to.y - from.y);
-}
-
-function videoOutputSize(rect: Rect, selectedQuality: VideoQuality): { width: number; height: number } {
-  const targetHeight = selectedQuality === "720p" ? 720 : 1080;
-  const aspect = rect.width / rect.height;
-  return {
-    width: Math.max(2, Math.round(targetHeight * aspect)),
-    height: targetHeight
-  };
-}
-
-function videoBitrate(selectedQuality: VideoQuality, selectedFps: VideoFps): number {
-  const base = selectedQuality === "720p" ? 5_000_000 : 10_000_000;
-  return selectedFps === 60 ? Math.round(base * 1.5) : base;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
-function supportedVideoMimeType(): string {
-  const preferredTypes = [
-    "video/webm;codecs=vp9",
-    "video/webm;codecs=vp8",
-    "video/webm"
-  ];
-
-  const supported = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type));
-  if (!supported) {
-    throw new Error("This system does not support WebM screen recording through MediaRecorder.");
-  }
-
-  return supported;
-}
-
-function closeMenus(): void {
-  colorMenu.hidden = true;
-  settingsMenu.hidden = true;
-}
-
-async function closeOverlay(): Promise<void> {
-  if (isCountingDown) {
-    cancelCountdown();
-  }
-
-  if (isRecording) {
-    await stopRecording();
-    return;
-  }
-
-  await window.softshot.closeOverlay();
-}
-
-async function reportError(message: string, error: unknown): Promise<void> {
-  const detail = error instanceof Error ? `${message}\n\n${error.message}` : message;
-  await window.softshot.showError(detail);
-}
-
-function pulseToolbar(): void {
-  const toolbar = document.querySelector<HTMLElement>(".toolbar");
-  if (!toolbar) {
-    return;
-  }
-
-  toolbar.animate(
-    [
-      { transform: "translateX(-50%) scale(1)" },
-      { transform: "translateX(-50%) scale(1.035)" },
-      { transform: "translateX(-50%) scale(1)" }
-    ],
-    { duration: 160, easing: "ease-out" }
-  );
-}
-
-function loadImage(image: HTMLImageElement, source: string, timeoutMessage: string): Promise<void> {
-  return withTimeout(
-    new Promise((resolve, reject) => {
-      const cleanup = () => {
-        image.removeEventListener("load", onLoad);
-        image.removeEventListener("error", onError);
-      };
-      const onLoad = () => {
-        cleanup();
+  private renderOnce(): Promise<void> {
+    return new Promise((resolve) => {
+      requestAnimationFrame((): void => {
+        this.render();
         resolve();
-      };
-      const onError = () => {
-        cleanup();
-        reject(new Error("Could not load the frozen screen image."));
-      };
+      });
+    });
+  }
 
-      image.addEventListener("load", onLoad);
-      image.addEventListener("error", onError);
-      image.src = source;
+  private renderSelection(): void {
+    const activeSelection = this.dragState?.kind === "select"
+      ? normalizeRect(this.dragState.start, this.dragState.current)
+      : this.selection;
+    if (!activeSelection) {
+      return;
+    }
 
-      if (image.complete && image.naturalWidth > 0) {
-        cleanup();
-        resolve();
+    this.context.clearRect(activeSelection.x, activeSelection.y, activeSelection.width, activeSelection.height);
+    drawSelectionFrame(this.context, activeSelection, this.isRecording || this.isCountingDown);
+  }
+
+  private renderSelectionDataUrl(): string | null {
+    if (!this.selection) {
+      this.pulseToolbar();
+      return null;
+    }
+
+    const output = document.createElement("canvas");
+    const imageScaleX = this.screenImage.naturalWidth / window.innerWidth;
+    const imageScaleY = this.screenImage.naturalHeight / window.innerHeight;
+    output.width = Math.max(defaultDevicePixelRatio, Math.round(this.selection.width * imageScaleX));
+    output.height = Math.max(defaultDevicePixelRatio, Math.round(this.selection.height * imageScaleY));
+
+    const outputContext = getCanvasContext(output, screenshotCanvasContextError);
+    outputContext.drawImage(
+      this.screenImage,
+      this.selection.x * imageScaleX,
+      this.selection.y * imageScaleY,
+      this.selection.width * imageScaleX,
+      this.selection.height * imageScaleY,
+      zeroPoint.x,
+      zeroPoint.y,
+      output.width,
+      output.height
+    );
+    drawAnnotations(outputContext, this.annotations, {
+      clip: this.selection,
+      offset: { x: this.selection.x, y: this.selection.y },
+      scale: {
+        x: output.width / this.selection.width,
+        y: output.height / this.selection.height
       }
-    }),
-    2000,
-    timeoutMessage
-  );
-}
-
-function waitForVideoMetadata(video: HTMLVideoElement): Promise<void> {
-  if (video.videoWidth > 0 && video.videoHeight > 0) {
-    return Promise.resolve();
+    });
+    return output.toDataURL("image/png");
   }
 
-  return new Promise((resolve) => {
-    video.addEventListener("loadedmetadata", () => resolve(), { once: true });
-  });
-}
+  private reportError(message: string, error: unknown): Promise<void> {
+    const detail = error instanceof Error ? `${message}\n\n${error.message}` : message;
+    return window.softshot.showError(detail);
+  }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  let timeoutId: number | undefined;
-  const timeout = new Promise<T>((_resolve, reject) => {
-    timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
-  });
-
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timeoutId !== undefined) {
-      window.clearTimeout(timeoutId);
+  private requestRender(): void {
+    if (this.isRenderQueued) {
+      return;
     }
+
+    this.isRenderQueued = true;
+    requestAnimationFrame((): void => {
+      this.isRenderQueued = false;
+      this.render();
+    });
+  }
+
+  private resizeCanvas(): void {
+    const ratio = window.devicePixelRatio || defaultDevicePixelRatio;
+    this.canvas.width = Math.round(window.innerWidth * ratio);
+    this.canvas.height = Math.round(window.innerHeight * ratio);
+    this.canvas.style.width = `${String(window.innerWidth)}px`;
+    this.canvas.style.height = `${String(window.innerHeight)}px`;
+    this.context.setTransform(ratio, zeroPoint.x, zeroPoint.y, ratio, zeroPoint.x, zeroPoint.y);
+  }
+
+  private async saveScreenshot(): Promise<void> {
+    const dataUrl = this.renderSelectionDataUrl();
+    if (!dataUrl) {
+      return;
+    }
+
+    await window.softshot.saveScreenshot(dataUrl);
+  }
+
+  private selectTool(tool: "arrow" | "pen"): void {
+    this.closeMenus();
+    this.activeTool = tool;
+    this.syncToolbar();
+  }
+
+  private setVideoButtonState(state: VideoButtonState): void {
+    const previousState = this.videoButton.dataset.state;
+    this.videoButton.dataset.state = state;
+
+    for (const icon of this.videoButton.querySelectorAll<HTMLElement>("[data-video-icon]")) {
+      icon.classList.toggle("active", icon.dataset.videoIcon === state);
+    }
+
+    if (previousState && previousState !== state) {
+      this.videoButton.animate(videoButtonPopKeyframes, {
+        duration: videoButtonAnimationDurationMs,
+        easing: "cubic-bezier(0.2, 0.85, 0.28, 1.2)"
+      });
+    }
+  }
+
+  private shouldIgnorePointerDown(event: PointerEvent): boolean {
+    return Boolean(
+      (event.target as HTMLElement).closest(".toolbar")
+      || this.isCountingDown
+      || (this.isRecording && this.activeTool === "select")
+    );
+  }
+
+  private startAnnotationDrag(point: Point, pointerId: number): void {
+    if (this.activeTool === "pen") {
+      const annotation: PenAnnotation = {
+        color: this.selectedColor,
+        kind: "pen",
+        points: [point]
+      };
+      this.annotations.push(annotation);
+      this.dragState = { annotation, kind: "pen" };
+    } else {
+      this.dragState = { current: point, kind: "arrow", start: point };
+    }
+
+    this.canvas.setPointerCapture(pointerId);
+    this.requestRender();
+  }
+
+  private async startRecording(): Promise<void> {
+    if (!this.bootstrap || !this.selection || this.isRecording) {
+      return;
+    }
+
+    try {
+      this.captureMode = "video";
+      this.isRecording = true;
+      this.syncToolbar();
+      this.recordingHud.showRecordingPending();
+      this.requestRender();
+      this.recordingSession = await RecordingSession.create({
+        annotations: this.annotations,
+        crop: this.selection,
+        fps: this.fps,
+        quality: this.quality,
+        sourceId: this.bootstrap.sourceId
+      });
+      this.recordingSession.start();
+      this.recordingHud.startRecordingTimer();
+    } catch (error) {
+      this.isRecording = false;
+      this.recordingSession?.stopTracks();
+      this.recordingSession = null;
+      this.recordingHud.stopRecording();
+      this.syncToolbar();
+      await this.reportError("Could not start the recording.", error);
+    }
+  }
+
+  private async startRecordingCountdown(): Promise<void> {
+    if (!this.selection || this.isRecording || this.isCountingDown) {
+      return;
+    }
+
+    this.countdownRunId += runIdIncrement;
+    const runId = this.countdownRunId;
+    this.isCountingDown = true;
+    this.syncToolbar();
+
+    for (const value of countdownValues) {
+      if (this.shouldStopCountdown(runId)) {
+        return;
+      }
+
+      this.recordingHud.setCountdown(value);
+      this.requestRender();
+      await delay(value === 0 ? countdownZeroHoldMs : countdownStepMs);
+    }
+
+    if (this.shouldStopCountdown(runId)) {
+      return;
+    }
+
+    this.isCountingDown = false;
+    this.recordingHud.clearCountdown();
+    await this.startRecording();
+  }
+
+  private startSelectionDrag(point: Point, pointerId: number): void {
+    this.dragState = { current: point, kind: "select", start: point };
+    this.canvas.setPointerCapture(pointerId);
+    this.requestRender();
+  }
+
+  private async stopRecording(): Promise<void> {
+    if (!this.recordingSession) {
+      return;
+    }
+
+    const session = this.recordingSession;
+    const bytes = await session.stop();
+    await this.finishRecording(bytes);
+  }
+
+  private syncToolbar(): void {
+    const videoState = this.videoButtonState();
+    this.screenshotButton.classList.toggle("active", this.captureMode === "screenshot");
+    this.videoButton.classList.toggle("active", this.captureMode === "video");
+    this.videoButton.classList.toggle("recording", this.isRecording || this.isCountingDown);
+    this.videoButton.title = this.videoButtonTitle(videoState);
+    this.videoButton.setAttribute("aria-label", this.videoButton.title);
+    this.setVideoButtonState(videoState);
+    this.penButton.classList.toggle("active", this.activeTool === "pen");
+    this.arrowButton.classList.toggle("active", this.activeTool === "arrow");
+    document.documentElement.style.setProperty("--accent", this.selectedColor);
+    this.syncColorMenu();
+    this.syncSettingsMenu();
+  }
+
+  private syncColorMenu(): void {
+    for (const button of this.colorMenu.querySelectorAll<HTMLButtonElement>("[data-color]")) {
+      button.classList.toggle("selected", button.dataset.color === this.selectedColor);
+    }
+  }
+
+  private syncSettingsMenu(): void {
+    for (const button of this.settingsMenu.querySelectorAll<HTMLButtonElement>("[data-quality]")) {
+      button.classList.toggle("selected", button.dataset.quality === this.quality);
+    }
+
+    for (const button of this.settingsMenu.querySelectorAll<HTMLButtonElement>("[data-fps]")) {
+      button.classList.toggle("selected", Number(button.dataset.fps) === this.fps);
+    }
+  }
+
+  private async toggleRecording(): Promise<void> {
+    this.enterVideoMode();
+
+    if (this.isRecording) {
+      await this.stopRecording();
+      return;
+    }
+
+    if (this.isCountingDown) {
+      this.cancelCountdown();
+      return;
+    }
+
+    if (!this.selection) {
+      this.syncToolbar();
+      this.pulseToolbar();
+      return;
+    }
+
+    await this.startRecordingCountdown();
+  }
+
+  private updateRecordingSetting(button: HTMLButtonElement): void {
+    const { fps, quality } = button.dataset;
+    if (quality === "720p" || quality === "1080p") {
+      this.quality = quality;
+    }
+
+    if (fps === "30" || fps === "60") {
+      this.fps = Number(fps) as VideoFps;
+    }
+  }
+
+  private videoButtonState(): VideoButtonState {
+    if (this.isRecording || this.isCountingDown) {
+      return "stop";
+    }
+
+    if (this.captureMode === "video" && this.selection) {
+      return "start";
+    }
+
+    return "video";
+  }
+
+  private videoButtonTitle(state: VideoButtonState): string {
+    if (state === "stop") {
+      return this.isCountingDown ? "Cancel countdown" : "Stop recording";
+    }
+
+    if (state === "start") {
+      return "Start recording";
+    }
+
+    return "Video";
+  }
+
+  private finishDrag(completedDrag: Exclude<DragState, null>): void {
+    if (completedDrag.kind === "select") {
+      this.finishSelectionDrag(completedDrag.start, completedDrag.current);
+    } else if (completedDrag.kind === "arrow") {
+      this.finishArrowDrag(completedDrag);
+    }
+  }
+
+  private finishArrowDrag(completedDrag: { current: Point; start: Point }): void {
+    const arrow = normalizeArrow({
+      color: this.selectedColor,
+      from: completedDrag.start,
+      kind: "arrow",
+      to: completedDrag.current
+    }, this.selection);
+    if (distance(arrow.from, arrow.to) >= minimumArrowLengthPx) {
+      this.annotations.push(arrow);
+    }
+  }
+
+  private finishSelectionDrag(start: Point, current: Point): void {
+    const nextSelection = normalizeRect(start, current);
+    if (nextSelection.width < minimumSelectionSizePx || nextSelection.height < minimumSelectionSizePx) {
+      return;
+    }
+
+    this.selection = nextSelection;
+    this.annotations = [];
+    this.activeTool = "select";
+    this.recordingHud.setSelection(this.selection);
+  }
+
+  private shouldStopCountdown(runId: number): boolean {
+    return !this.isCountingDown || runId !== this.countdownRunId;
+  }
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
   });
 }
 
-function stopTracks(stream: MediaStream): void {
-  for (const track of stream.getTracks()) {
-    track.stop();
-  }
-}
-
-function element<T extends HTMLElement>(id: string): T {
-  const value = document.getElementById(id);
-  if (!value) {
-    throw new Error(`Missing element: ${id}.`);
-  }
-
-  return value as T;
-}
-
-function canvasContext(canvasElement: HTMLCanvasElement, errorMessage: string): CanvasRenderingContext2D {
-  const value = canvasElement.getContext("2d");
-  if (!value) {
-    throw new Error(errorMessage);
-  }
-
-  return value;
-}
-
-class RecordingSession {
-  readonly recorder: MediaRecorder;
-  readonly sourceStream: MediaStream;
-  readonly outputStream: MediaStream;
-  readonly sourceVideo: HTMLVideoElement;
-  readonly outputCanvas: HTMLCanvasElement;
-  readonly outputContext: CanvasRenderingContext2D;
-  readonly crop: Rect;
-  readonly outputSize: { width: number; height: number };
-  animationHandle: number | null;
-
-  constructor(config: {
-    recorder: MediaRecorder;
-    sourceStream: MediaStream;
-    outputStream: MediaStream;
-    sourceVideo: HTMLVideoElement;
-    outputCanvas: HTMLCanvasElement;
-    outputContext: CanvasRenderingContext2D;
-    crop: Rect;
-    outputSize: { width: number; height: number };
-    animationHandle: number | null;
-  }) {
-    this.recorder = config.recorder;
-    this.sourceStream = config.sourceStream;
-    this.outputStream = config.outputStream;
-    this.sourceVideo = config.sourceVideo;
-    this.outputCanvas = config.outputCanvas;
-    this.outputContext = config.outputContext;
-    this.crop = config.crop;
-    this.outputSize = config.outputSize;
-    this.animationHandle = config.animationHandle;
-  }
-
-  stopTracks(): void {
-    stopTracks(this.sourceStream);
-    stopTracks(this.outputStream);
-  }
-}
+const overlayApp = new OverlayApp();
+await overlayApp.initialize();
