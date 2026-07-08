@@ -11,50 +11,27 @@ export interface TrimRange {
 }
 
 interface LoadedVideo {
-  url: string;
   video: HTMLVideoElement;
 }
 
 export async function exportTrimmedVideo(
-  sourceBytes: Uint8Array,
+  sourceUrl: string,
   mimeType: string,
   fps: VideoFps,
-  sourceDurationSeconds: number,
   trimRange: TrimRange
 ): Promise<Uint8Array> {
-  if (isFullRange(trimRange, sourceDurationSeconds)) {
-    return sourceBytes;
-  }
-
-  const sourceBlob = new Blob([arrayBufferFromBytes(sourceBytes)], { type: mimeType });
-  const loadedVideo = await createLoadedVideo(sourceBlob);
-
-  try {
-    return await recordVideoSegment(loadedVideo.video, mimeType, fps, trimRange);
-  } finally {
-    URL.revokeObjectURL(loadedVideo.url);
-  }
+  const loadedVideo = await createLoadedVideo(sourceUrl);
+  return await recordVideoSegment(loadedVideo.video, mimeType, fps, trimRange);
 }
 
-function arrayBufferFromBytes(bytes: Uint8Array): ArrayBuffer {
-  const buffer = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(buffer).set(bytes);
-  return buffer;
-}
-
-async function createLoadedVideo(blob: Blob): Promise<LoadedVideo> {
-  const url = URL.createObjectURL(blob);
+async function createLoadedVideo(sourceUrl: string): Promise<LoadedVideo> {
   const video = document.createElement("video");
   video.muted = true;
   video.playsInline = true;
   video.preload = "auto";
-  video.src = url;
+  video.src = sourceUrl;
   await waitForVideoMetadata(video);
-  return { url, video };
-}
-
-function isFullRange(trimRange: TrimRange, duration: number): boolean {
-  return trimRange.start <= trimToleranceSeconds && Math.abs(trimRange.end - duration) <= trimToleranceSeconds;
+  return { video };
 }
 
 async function playSegment(

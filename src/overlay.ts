@@ -23,9 +23,9 @@ import {
 } from "./overlay-model.js";
 import { RecordingHudController } from "./recording-hud.js";
 import { type RecordingResult, RecordingSession } from "./recording-session.js";
-import type { CaptureMode, OverlayBootstrap, Rect, SoftshotApi, VideoFps, VideoQuality } from "./shared.js";
+import type { CaptureMode, OverlayBootstrap, Rect, VideoFps, VideoQuality } from "./shared.js";
 import { videoFpsOptions } from "./shared.js";
-import { hasWebmCluster } from "./webm.js";
+import { getSoftshotApi } from "./softshot-api.js";
 
 const canvasContextError = "Could not create the overlay drawing context.";
 const copyShortcutKey = "c";
@@ -47,17 +47,12 @@ const countdownValues = [countdownFirstValue, countdownSecondValue, countdownThi
 const countdownStepMs = 1000;
 const countdownZeroHoldMs = 500;
 const liveCaptureClassName = "live-capture";
-const minimumRecordingByteLength = 1;
 const runIdIncrement = 1;
 const videoButtonPopKeyframes = [
   { transform: "scale(1)" },
   { transform: "scale(1.08)" },
   { transform: "scale(1)" }
 ] satisfies Keyframe[];
-
-type SoftshotGlobal = typeof globalThis & {
-  softshot: SoftshotApi;
-};
 
 type RecordingSessionPreparation =
   | { kind: "failed"; error: unknown }
@@ -375,12 +370,7 @@ class OverlayApp {
     await this.exitLiveCapture();
     this.unbindMainEvents();
 
-    if (result.bytes.byteLength < minimumRecordingByteLength || !hasWebmCluster(result.bytes)) {
-      await getSoftshotApi().closeOverlay();
-      return;
-    }
-
-    await getSoftshotApi().openVideoEditor(result.bytes, this.fps, result.durationSeconds, result.mimeType);
+    await getSoftshotApi().openVideoEditor(result.recordingId, this.fps, result.durationSeconds, result.mimeType);
   }
 
   private async handleStopRecordingRequest(): Promise<void> {
@@ -678,13 +668,13 @@ class OverlayApp {
   private async discardPreparedRecordingSession(sessionPromise: Promise<RecordingSessionPreparation>): Promise<void> {
     const preparation = await sessionPromise;
     if (preparation.kind === "ready") {
-      preparation.session.stopTracks();
+      await preparation.session.discard();
     }
   }
 
   private async startRecording(session: RecordingSession): Promise<void> {
     if (!this.bootstrap || !this.selection || this.isRecording) {
-      session.stopTracks();
+      await session.discard();
       return;
     }
 
@@ -699,7 +689,7 @@ class OverlayApp {
       this.recordingHud.startRecordingTimer();
     } catch (error) {
       this.isRecording = false;
-      session.stopTracks();
+      await session.discard();
       this.recordingSession = null;
       this.recordingHud.stopRecording();
       this.syncToolbar();
@@ -756,7 +746,7 @@ class OverlayApp {
       const preparation = await sessionPromise;
       if (this.shouldStopCountdown(runId)) {
         if (preparation.kind === "ready") {
-          preparation.session.stopTracks();
+          await preparation.session.discard();
         }
 
         return;
@@ -966,10 +956,6 @@ async function delay(ms: number): Promise<void> {
   await new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
   });
-}
-
-function getSoftshotApi(): SoftshotApi {
-  return (globalThis as SoftshotGlobal).softshot;
 }
 
 const overlayApp = new OverlayApp();

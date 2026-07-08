@@ -3,13 +3,14 @@ const webmClusterByteB = 0x43;
 const webmClusterByteC = 0xB6;
 const webmClusterByteD = 0x75;
 const webmClusterSignature = [webmClusterByteA, webmClusterByteB, webmClusterByteC, webmClusterByteD] as const;
+export const webmClusterSignatureLength = webmClusterSignature.length;
 
 export function hasWebmCluster(bytes: Uint8Array): boolean {
-  if (bytes.byteLength < webmClusterSignature.length) {
+  if (bytes.byteLength < webmClusterSignatureLength) {
     return false;
   }
 
-  const lastStartOffset = bytes.byteLength - webmClusterSignature.length;
+  const lastStartOffset = bytes.byteLength - webmClusterSignatureLength;
   for (let offset = 0; offset <= lastStartOffset; offset += 1) {
     if (hasSignatureAt(bytes, offset)) {
       return true;

@@ -1,7 +1,8 @@
 import { exportTrimmedVideo, type TrimRange } from "./editor-export.js";
 import { getRequiredElement } from "./overlay-dom.js";
-import type { EditorBootstrap, PreparedVideoFile, SoftshotApi, VideoFps } from "./shared.js";
+import type { EditorBootstrap, PreparedVideoFile, VideoFps } from "./shared.js";
 import { videoFpsOptions } from "./shared.js";
+import { getSoftshotApi } from "./softshot-api.js";
 
 const defaultMimeType = "video/webm";
 const minimumTrimDurationSeconds = 0.05;
@@ -18,10 +19,6 @@ const trimToleranceSeconds = 0.04;
 const transientStatusDurationMs = 1400;
 const zeroSeconds = 0;
 const noPointerId = -1;
-
-type SoftshotGlobal = typeof globalThis & {
-  softshot: SoftshotApi;
-};
 
 interface PreparedVideo {
   filePath: string;
@@ -52,18 +49,18 @@ class VideoEditorApp {
   private readonly totalTimeText = getRequiredElement("total-time", HTMLSpanElement);
   private readonly video = getRequiredElement("editor-video", HTMLVideoElement);
   private activeTimelinePointerId = noPointerId;
-  private bytes = new Uint8Array();
   private durationSeconds = zeroSeconds;
   private fps: VideoFps = videoFpsOptions.high;
   private isBusy = false;
   private mimeType = defaultMimeType;
-  private objectUrl: string | null = null;
   private pendingPreparation: PendingPreparation | null = null;
   private playbackFrameHandle: number | null = null;
   private preparationFailure: PreparationFailure | null = null;
   private preparationHandle: ReturnType<typeof setTimeout> | null = null;
   private preparationRunId = 0;
   private preparedVideo: PreparedVideo | null = null;
+  private sourceFilePath = "";
+  private sourceUrl = "";
   private statusHandle: ReturnType<typeof setTimeout> | null = null;
   private trimEndSeconds = zeroSeconds;
   private trimStartSeconds = zeroSeconds;
@@ -150,7 +147,6 @@ class VideoEditorApp {
   private async closeEditor(): Promise<void> {
     this.clearPreparationTimer();
     this.stopPlaybackFrameSync();
-    this.releaseObjectUrl();
     await getSoftshotApi().closeEditor();
   }
 
@@ -191,6 +187,13 @@ class VideoEditorApp {
   }
 
   private async createPreparedVideo(key: string, trimRange: TrimRange): Promise<PreparedVideo> {
+    if (this.isFullTrimRange(trimRange)) {
+      return {
+        filePath: this.sourceFilePath,
+        key
+      };
+    }
+
     const outputBytes = await this.exportVideoForTrimRange(trimRange);
     if (outputBytes.byteLength === 0) {
       throw new Error("Cannot prepare an empty recording.");
@@ -212,29 +215,16 @@ class VideoEditorApp {
   }
 
   private async exportVideoForTrimRange(trimRange: TrimRange): Promise<Uint8Array> {
-    if (this.isFullTrimRange(trimRange)) {
-      return this.bytes;
-    }
-
-    return await exportTrimmedVideo(this.bytes, this.mimeType, this.fps, this.durationSeconds, trimRange);
+    return await exportTrimmedVideo(this.sourceUrl, this.mimeType, this.fps, trimRange);
   }
 
   private loadRecording(bootstrap: EditorBootstrap): void {
-    this.bytes = new Uint8Array(bootstrap.bytes);
     this.durationSeconds = positiveDuration(bootstrap.durationSeconds);
     this.fps = bootstrap.fps;
     this.mimeType = bootstrap.mimeType;
-    this.objectUrl = URL.createObjectURL(new Blob([this.bytes], { type: this.mimeType }));
-    this.video.src = this.objectUrl;
-  }
-
-  private releaseObjectUrl(): void {
-    if (!this.objectUrl) {
-      return;
-    }
-
-    URL.revokeObjectURL(this.objectUrl);
-    this.objectUrl = null;
+    this.sourceFilePath = bootstrap.sourceFilePath;
+    this.sourceUrl = bootstrap.sourceUrl;
+    this.video.src = this.sourceUrl;
   }
 
   private async prepareVideo(key: string, trimRange: TrimRange): Promise<PreparedVideo> {
@@ -504,10 +494,6 @@ function formatTime(value: number): string {
   const minutes = Math.floor(safeValue / secondsPerMinute);
   const seconds = safeValue % secondsPerMinute;
   return `${String(minutes).padStart(timePartLength, "0")}:${seconds.toFixed(timePrecisionDigits).padStart(secondsTextLength, "0")}`;
-}
-
-function getSoftshotApi(): SoftshotApi {
-  return (globalThis as SoftshotGlobal).softshot;
 }
 
 function percentOf(value: number, total: number): number {

@@ -1,7 +1,9 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { appendFile, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   app,
@@ -22,7 +24,16 @@ import {
   webContents as electronWebContents
 } from "electron";
 
-import type { EditorBootstrap, OverlayBootstrap, PreparedVideoFile, SaveDialogResult, SaveResult, VideoFps } from "./shared";
+import type {
+  EditorBootstrap,
+  OverlayBootstrap,
+  PreparedVideoFile,
+  RecordingFile,
+  SaveDialogResult,
+  SaveResult,
+  VideoFps
+} from "./shared";
+import { hasWebmCluster, webmClusterSignatureLength } from "./webm";
 
 const appName = "Softshot";
 const primaryShortcut = "PrintScreen";
@@ -41,6 +52,9 @@ const editorWindowHeightPx = 560;
 const editorWindowMinWidthPx = 720;
 const editorWindowMinHeightPx = 460;
 const powershellExecutable = String.raw`C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`;
+const minimumRecordingByteLength = 1;
+const webmScanChunkSizeBytes = 65_536;
+const webmSignatureCarryByteLength = webmClusterSignatureLength - 1;
 
 type CaptureFolder = "pictures" | "videos";
 type CaptureExtension = "png" | "webm";
@@ -50,6 +64,11 @@ interface PendingOverlayBootstrap {
   promise: Promise<OverlayBootstrap>;
   reject(error: Error): void;
   resolve(data: OverlayBootstrap): void;
+}
+
+interface RecordingTemporaryFile {
+  byteLength: number;
+  filePath: string;
 }
 
 class SoftshotApp {
@@ -76,6 +95,8 @@ class SoftshotApp {
   private readonly pendingOverlayBootstrapsByWebContents = new Map<number, PendingOverlayBootstrap>();
 
   private preparedOverlay: BrowserWindow | null = null;
+
+  private readonly recordingTempFilesById = new Map<string, RecordingTemporaryFile>();
 
   private registeredShortcuts: string[] = [];
 
@@ -125,6 +146,67 @@ class SoftshotApp {
     const temporaryFiles = this.editorTempFilesByWebContents.get(webContentsId) ?? new Set<string>();
     temporaryFiles.add(filePath);
     this.editorTempFilesByWebContents.set(webContentsId, temporaryFiles);
+  }
+
+  private async appendRecordingFileChunk(recordingId: string, bytes: Uint8Array): Promise<void> {
+    if (bytes.byteLength === 0) {
+      throw new Error("Cannot append an empty recording chunk.");
+    }
+
+    const recordingFile = this.getRecordingTempFile(recordingId);
+    await appendFile(recordingFile.filePath, Buffer.from(bytes));
+    recordingFile.byteLength += bytes.byteLength;
+  }
+
+  private async createRecordingFile(): Promise<RecordingFile> {
+    const id = randomUUID();
+    const filePath = await this.createTemporaryVideoFilePath();
+    await writeFile(filePath, "");
+    this.recordingTempFilesById.set(id, {
+      byteLength: 0,
+      filePath
+    });
+    return { id };
+  }
+
+  private async discardRecordingFile(recordingId: string): Promise<void> {
+    const recordingFile = this.takeRecordingTempFile(recordingId);
+    await rm(recordingFile.filePath, { force: true });
+  }
+
+  private async fileHasWebmCluster(filePath: string): Promise<boolean> {
+    let carry: Uint8Array = new Uint8Array();
+    const stream = createReadStream(filePath, { highWaterMark: webmScanChunkSizeBytes });
+
+    for await (const chunk of stream as AsyncIterable<Buffer>) {
+      const scanBytes = joinedBytes(carry, chunk);
+      if (hasWebmCluster(scanBytes)) {
+        return true;
+      }
+
+      carry = trailingBytes(scanBytes, webmSignatureCarryByteLength);
+    }
+
+    return false;
+  }
+
+  private getRecordingTempFile(recordingId: string): RecordingTemporaryFile {
+    const recordingFile = this.recordingTempFilesById.get(recordingId);
+    if (!recordingFile) {
+      throw new Error("The recording file does not belong to this capture session.");
+    }
+
+    return recordingFile;
+  }
+
+  private async hasUsableRecordingFile(recordingFile: RecordingTemporaryFile): Promise<boolean> {
+    return recordingFile.byteLength >= minimumRecordingByteLength && await this.fileHasWebmCluster(recordingFile.filePath);
+  }
+
+  private takeRecordingTempFile(recordingId: string): RecordingTemporaryFile {
+    const recordingFile = this.getRecordingTempFile(recordingId);
+    this.recordingTempFilesById.delete(recordingId);
+    return recordingFile;
   }
 
   private createOverlayWindow(display: Display): BrowserWindow {
@@ -606,49 +688,79 @@ class SoftshotApp {
     }
   }
 
+  private showEditorWindow(editor: BrowserWindow): void {
+    if (editor.isDestroyed()) {
+      return;
+    }
+
+    if (!editor.isVisible()) {
+      editor.show();
+    }
+
+    editor.focus();
+  }
+
   private async openVideoEditor(
     event: Electron.IpcMainInvokeEvent,
-    bytes: Uint8Array,
+    recordingId: string,
     fps: VideoFps,
     durationSeconds: number,
     mimeType: string
   ): Promise<void> {
-    if (bytes.byteLength === 0) {
-      this.closeSenderWindow(event);
-      return;
-    }
-
-    const overlay = BrowserWindow.fromWebContents(event.sender);
-    const editor = this.createEditorWindow();
-    const editorWebContentsId = editor.webContents.id;
-    this.editorDataByWebContents.set(editorWebContentsId, {
-      bytes,
-      durationSeconds,
-      fps,
-      mimeType
-    });
-
-    editor.once("ready-to-show", (): void => {
-      if (editor.isDestroyed()) {
+    const recordingFile = this.takeRecordingTempFile(recordingId);
+    let isRecordingFileOwnedByEditor = false;
+    try {
+      if (!await this.hasUsableRecordingFile(recordingFile)) {
+        await rm(recordingFile.filePath, { force: true });
+        this.closeSenderWindow(event);
         return;
       }
 
-      editor.show();
-      editor.focus();
-    });
-
-    editor.on("closed", (): void => {
-      this.editorDataByWebContents.delete(editorWebContentsId);
-      this.editorSavePathsByWebContents.delete(editorWebContentsId);
-      void this.cleanupEditorTempFiles(editorWebContentsId).catch((error: unknown): void => {
-        this.debugLog(`editor temp cleanup failed: ${errorMessage(error)}`);
+      const overlay = BrowserWindow.fromWebContents(event.sender);
+      const editor = this.createEditorWindow();
+      const editorWebContentsId = editor.webContents.id;
+      this.editorDataByWebContents.set(editorWebContentsId, {
+        durationSeconds,
+        fps,
+        mimeType,
+        sourceFilePath: recordingFile.filePath,
+        sourceUrl: pathToFileURL(recordingFile.filePath).toString()
       });
-    });
+      this.registerEditorTempFile(editorWebContentsId, recordingFile.filePath);
+      isRecordingFileOwnedByEditor = true;
 
-    await editor.loadFile(path.join(app.getAppPath(), "src", "editor.html"));
+      editor.once("ready-to-show", (): void => {
+        this.showEditorWindow(editor);
+      });
 
-    if (overlay && !overlay.isDestroyed()) {
-      overlay.close();
+      editor.on("closed", (): void => {
+        this.editorDataByWebContents.delete(editorWebContentsId);
+        this.editorSavePathsByWebContents.delete(editorWebContentsId);
+        void this.cleanupEditorTempFiles(editorWebContentsId).catch((error: unknown): void => {
+          this.debugLog(`editor temp cleanup failed: ${errorMessage(error)}`);
+        });
+      });
+
+      try {
+        await editor.loadFile(path.join(app.getAppPath(), "src", "editor.html"));
+        this.showEditorWindow(editor);
+      } catch (error) {
+        if (!editor.isDestroyed()) {
+          editor.close();
+        }
+
+        throw error;
+      }
+
+      if (overlay && !overlay.isDestroyed()) {
+        overlay.close();
+      }
+    } catch (error) {
+      if (!isRecordingFileOwnedByEditor) {
+        await rm(recordingFile.filePath, { force: true });
+      }
+
+      throw error;
     }
   }
 
@@ -750,10 +862,25 @@ class SoftshotApp {
       this.closeSenderWindow(event);
     });
 
+    ipcMain.handle("recording:create-file", async (event): Promise<RecordingFile> => {
+      this.getSenderOverlay(event);
+      return await this.createRecordingFile();
+    });
+
+    ipcMain.handle("recording:append-file-chunk", async (event, recordingId: string, bytes: Uint8Array): Promise<void> => {
+      this.getSenderOverlay(event);
+      await this.appendRecordingFileChunk(recordingId, bytes);
+    });
+
+    ipcMain.handle("recording:discard-file", async (event, recordingId: string): Promise<void> => {
+      this.getSenderOverlay(event);
+      await this.discardRecordingFile(recordingId);
+    });
+
     ipcMain.handle(
       "recording:open-editor",
-      async (event, bytes: Uint8Array, fps: VideoFps, durationSeconds: number, mimeType: string): Promise<void> => {
-        await this.openVideoEditor(event, bytes, fps, durationSeconds, mimeType);
+      async (event, recordingId: string, fps: VideoFps, durationSeconds: number, mimeType: string): Promise<void> => {
+        await this.openVideoEditor(event, recordingId, fps, durationSeconds, mimeType);
       }
     );
 
@@ -943,11 +1070,15 @@ class SoftshotApp {
     this.notifySaved("Recording saved", targetFilePath);
   }
 
-  private async writeTemporaryVideoFile(data: Buffer): Promise<string> {
+  private async createTemporaryVideoFilePath(): Promise<string> {
     const targetDirectory = path.join(app.getPath("temp"), appName, clipboardFolderName);
     await mkdir(targetDirectory, { recursive: true });
 
-    const filePath = path.join(targetDirectory, `${appName} ${this.timestamp()} ${randomUUID()}.webm`);
+    return path.join(targetDirectory, `${appName} ${this.timestamp()} ${randomUUID()}.webm`);
+  }
+
+  private async writeTemporaryVideoFile(data: Buffer): Promise<string> {
+    const filePath = await this.createTemporaryVideoFilePath();
     await writeFile(filePath, data);
     return filePath;
   }
@@ -977,6 +1108,18 @@ class SoftshotApp {
 
 function padDatePart(part: number): string {
   return part.toString().padStart(timestampPartWidth, "0");
+}
+
+function joinedBytes(left: Uint8Array, right: Uint8Array): Uint8Array {
+  const bytes = new Uint8Array(left.byteLength + right.byteLength);
+  bytes.set(left);
+  bytes.set(right, left.byteLength);
+  return bytes;
+}
+
+function trailingBytes(bytes: Uint8Array, maxByteLength: number): Uint8Array {
+  const start = Math.max(0, bytes.byteLength - maxByteLength);
+  return bytes.slice(start);
 }
 
 async function writeFileDropListToClipboard(filePath: string): Promise<void> {

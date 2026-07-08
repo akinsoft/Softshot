@@ -4,6 +4,7 @@ import type {
   EditorBootstrap,
   OverlayBootstrap,
   PreparedVideoFile,
+  RecordingFile,
   SaveDialogResult,
   SaveResult,
   SoftshotApi,
@@ -14,12 +15,17 @@ import type {
 const stopRecordingRequestChannel = "overlay:stop-recording";
 
 const api: SoftshotApi = {
+  appendRecordingFileChunk: async (recordingId: string, bytes: Uint8Array) =>
+    ipcRenderer.invoke("recording:append-file-chunk", recordingId, bytes) as Promise<void>,
+  createRecordingFile: async () => ipcRenderer.invoke("recording:create-file") as Promise<RecordingFile>,
+  discardRecordingFile: async (recordingId: string) =>
+    ipcRenderer.invoke("recording:discard-file", recordingId) as Promise<void>,
   getBootstrap: async () => ipcRenderer.invoke("overlay:get-bootstrap") as Promise<OverlayBootstrap>,
   saveScreenshot: async (dataUrl: string) =>
     ipcRenderer.invoke("capture:save-screenshot", dataUrl) as Promise<SaveResult>,
   copyScreenshot: async (dataUrl: string) => ipcRenderer.invoke("capture:copy-screenshot", dataUrl) as Promise<void>,
-  openVideoEditor: async (bytes: Uint8Array, fps: VideoFps, durationSeconds: number, mimeType: string) =>
-    ipcRenderer.invoke("recording:open-editor", bytes, fps, durationSeconds, mimeType) as Promise<void>,
+  openVideoEditor: async (recordingId: string, fps: VideoFps, durationSeconds: number, mimeType: string) =>
+    ipcRenderer.invoke("recording:open-editor", recordingId, fps, durationSeconds, mimeType) as Promise<void>,
   getEditorBootstrap: async () => ipcRenderer.invoke("editor:get-bootstrap") as Promise<EditorBootstrap>,
   chooseEditorVideoSavePath: async () => ipcRenderer.invoke("editor:choose-save-path") as Promise<SaveDialogResult>,
   prepareEditorVideoFile: async (bytes: Uint8Array) =>

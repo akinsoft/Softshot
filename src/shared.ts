@@ -32,10 +32,15 @@ export interface OverlayBootstrap {
 }
 
 export interface EditorBootstrap {
-  bytes: Uint8Array;
   durationSeconds: number;
   fps: VideoFps;
   mimeType: string;
+  sourceFilePath: string;
+  sourceUrl: string;
+}
+
+export interface RecordingFile {
+  id: string;
 }
 
 export interface SaveResult {
@@ -53,10 +58,13 @@ export interface PreparedVideoFile {
 export type StopRecordingRequestHandler = () => void;
 
 export interface SoftshotApi {
+  appendRecordingFileChunk(recordingId: string, bytes: Uint8Array): Promise<void>;
+  createRecordingFile(): Promise<RecordingFile>;
+  discardRecordingFile(recordingId: string): Promise<void>;
   getBootstrap(): Promise<OverlayBootstrap>;
   saveScreenshot(dataUrl: string): Promise<SaveResult>;
   copyScreenshot(dataUrl: string): Promise<void>;
-  openVideoEditor(bytes: Uint8Array, fps: VideoFps, durationSeconds: number, mimeType: string): Promise<void>;
+  openVideoEditor(recordingId: string, fps: VideoFps, durationSeconds: number, mimeType: string): Promise<void>;
   getEditorBootstrap(): Promise<EditorBootstrap>;
   chooseEditorVideoSavePath(): Promise<SaveDialogResult>;
   prepareEditorVideoFile(bytes: Uint8Array): Promise<PreparedVideoFile>;

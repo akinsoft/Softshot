@@ -3,6 +3,7 @@ import { drawAnnotations } from "./overlay-drawing.js";
 import type { Annotation } from "./overlay-model.js";
 import type { Rect, VideoFps, VideoQuality } from "./shared.js";
 import { videoFpsOptions, videoQualityHeights } from "./shared.js";
+import { getSoftshotApi } from "./softshot-api.js";
 
 const highQualityBitrate = 10_000_000;
 const recordingTimesliceMs = 500;
@@ -20,56 +21,66 @@ export interface RecordingSessionConfig {
 }
 
 export interface RecordingResult {
-  bytes: Uint8Array;
   durationSeconds: number;
   mimeType: string;
+  recordingId: string;
 }
 
 export class RecordingSession {
   static async create(config: RecordingSessionConfig): Promise<RecordingSession> {
-    const sourceStream = await getCursorlessDesktopStream(config.fps);
-    const sourceVideo = await createSourceVideo(sourceStream);
-    const outputSize = videoOutputSize(config.crop, config.quality);
-    const outputCanvas = document.createElement("canvas");
-    outputCanvas.width = outputSize.width;
-    outputCanvas.height = outputSize.height;
+    const recordingFile = await getSoftshotApi().createRecordingFile();
+    try {
+      const sourceStream = await getCursorlessDesktopStream(config.fps);
+      const sourceVideo = await createSourceVideo(sourceStream);
+      const outputSize = videoOutputSize(config.crop, config.quality);
+      const outputCanvas = document.createElement("canvas");
+      outputCanvas.width = outputSize.width;
+      outputCanvas.height = outputSize.height;
 
-    const outputContext = outputCanvas.getContext("2d");
-    if (!outputContext) {
-      throw new Error("Could not create the recording canvas.");
+      const outputContext = outputCanvas.getContext("2d");
+      if (!outputContext) {
+        throw new Error("Could not create the recording canvas.");
+      }
+
+      const outputStream = outputCanvas.captureStream(config.fps);
+      const mimeType = supportedVideoMimeType();
+      const recorder = new MediaRecorder(outputStream, {
+        mimeType,
+        videoBitsPerSecond: videoBitrate(config.quality, config.fps)
+      });
+      const session = new RecordingSession({
+        crop: { ...config.crop },
+        outputCanvas,
+        outputContext,
+        outputStream,
+        mimeType,
+        recorder,
+        recordingId: recordingFile.id,
+        sourceStream,
+        sourceVideo
+      });
+      session.connectRecorder(config.annotations);
+      return session;
+    } catch (error) {
+      await getSoftshotApi().discardRecordingFile(recordingFile.id);
+      throw error;
     }
-
-    const outputStream = outputCanvas.captureStream(config.fps);
-    const mimeType = supportedVideoMimeType();
-    const recorder = new MediaRecorder(outputStream, {
-      mimeType,
-      videoBitsPerSecond: videoBitrate(config.quality, config.fps)
-    });
-    const session = new RecordingSession({
-      crop: { ...config.crop },
-      outputCanvas,
-      outputContext,
-      outputStream,
-      mimeType,
-      recorder,
-      sourceStream,
-      sourceVideo
-    });
-    session.connectRecorder(config.annotations);
-    return session;
   }
 
   private animationHandle: number | null = null;
-  private readonly chunks: Blob[] = [];
   private readonly crop: Rect;
+  private isFinalized = false;
   private readonly outputCanvas: HTMLCanvasElement;
   private readonly outputContext: CanvasRenderingContext2D;
   private readonly outputStream: MediaStream;
   private readonly mimeType: string;
   private readonly recorder: MediaRecorder;
+  private readonly recordingId: string;
   private recordingStartedAtMs: number | null = null;
   private readonly sourceStream: MediaStream;
   private readonly sourceVideo: HTMLVideoElement;
+  private writeChain: Promise<void> = Promise.resolve();
+  private writeError: unknown = null;
 
   private constructor(config: {
     crop: Rect;
@@ -78,6 +89,7 @@ export class RecordingSession {
     outputStream: MediaStream;
     mimeType: string;
     recorder: MediaRecorder;
+    recordingId: string;
     sourceStream: MediaStream;
     sourceVideo: HTMLVideoElement;
   }) {
@@ -87,6 +99,7 @@ export class RecordingSession {
     this.outputStream = config.outputStream;
     this.mimeType = config.mimeType;
     this.recorder = config.recorder;
+    this.recordingId = config.recordingId;
     this.sourceStream = config.sourceStream;
     this.sourceVideo = config.sourceVideo;
   }
@@ -94,7 +107,7 @@ export class RecordingSession {
   private connectRecorder(annotations: Annotation[]): void {
     this.recorder.addEventListener("dataavailable", (event) => {
       if (event.data.size > 0) {
-        this.chunks.push(event.data);
+        this.queueChunkWrite(event.data);
       }
     });
 
@@ -135,11 +148,6 @@ export class RecordingSession {
     });
   }
 
-  private async recordedBytes(): Promise<Uint8Array> {
-    const blob = new Blob(this.chunks, { type: this.mimeType });
-    return new Uint8Array(await blob.arrayBuffer());
-  }
-
   private recordingDurationSeconds(stoppedAtMs: number): number {
     if (this.recordingStartedAtMs === null) {
       return 0;
@@ -148,37 +156,91 @@ export class RecordingSession {
     return Math.max(0, (stoppedAtMs - this.recordingStartedAtMs) / millisecondsPerSecond);
   }
 
-  async stop(): Promise<RecordingResult> {
+  private async flushWrites(): Promise<void> {
+    await this.writeChain;
+    if (this.writeError) {
+      throw new Error("Could not write the recording file.", { cause: this.writeError });
+    }
+  }
+
+  private queueChunkWrite(blob: Blob): void {
+    const previousWrite = this.writeChain;
+    this.writeChain = this.writeQueuedChunk(previousWrite, blob);
+  }
+
+  private async stopRecorderIfActive(): Promise<void> {
     if (this.recorder.state === "inactive") {
-      return {
-        bytes: new Uint8Array(),
-        durationSeconds: 0,
-        mimeType: this.mimeType
-      };
+      await this.flushWrites();
+      return;
     }
 
-    const durationSeconds = this.recordingDurationSeconds(performance.now());
-    const stopped = new Promise<Uint8Array>((resolve) => {
+    const stopped = new Promise<void>((resolve) => {
       this.recorder.addEventListener(
         "stop",
         () => {
-          resolve(this.recordedBytes());
+          resolve();
         },
         { once: true }
       );
     });
     this.recorder.stop();
-    return {
-      bytes: await stopped,
-      durationSeconds,
-      mimeType: this.mimeType
-    };
+    await stopped;
+    await this.flushWrites();
+  }
+
+  private async writeBlobChunk(blob: Blob): Promise<void> {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    await getSoftshotApi().appendRecordingFileChunk(this.recordingId, bytes);
+  }
+
+  private async writeQueuedChunk(previousWrite: Promise<void>, blob: Blob): Promise<void> {
+    await previousWrite;
+    if (this.writeError) {
+      return;
+    }
+
+    try {
+      await this.writeBlobChunk(blob);
+    } catch (error) {
+      this.writeError = error;
+    }
+  }
+
+  async discard(): Promise<void> {
+    await this.stopRecorderIfActive();
+    this.stopTracks();
+
+    if (this.isFinalized) {
+      return;
+    }
+
+    await getSoftshotApi().discardRecordingFile(this.recordingId);
+    this.isFinalized = true;
   }
 
   start(): void {
     this.recordingStartedAtMs = performance.now();
     this.drawFrame();
     this.recorder.start(recordingTimesliceMs);
+  }
+
+  async stop(): Promise<RecordingResult> {
+    if (this.recorder.state === "inactive") {
+      return {
+        durationSeconds: 0,
+        mimeType: this.mimeType,
+        recordingId: this.recordingId
+      };
+    }
+
+    const durationSeconds = this.recordingDurationSeconds(performance.now());
+    await this.stopRecorderIfActive();
+    this.isFinalized = true;
+    return {
+      durationSeconds,
+      mimeType: this.mimeType,
+      recordingId: this.recordingId
+    };
   }
 
   stopTracks(): void {
