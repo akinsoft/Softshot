@@ -24,6 +24,7 @@ import {
   webContents as electronWebContents
 } from "electron";
 
+import { startUpdateChecks } from "./app-updater";
 import type {
   EditorBootstrap,
   OverlayBootstrap,
@@ -36,6 +37,7 @@ import type {
 import { hasWebmCluster, webmClusterSignatureLength } from "./webm";
 
 const appName = "Softshot";
+const appId = "com.akinsoft.softshot";
 const primaryShortcut = "PrintScreen";
 const backupShortcuts = ["Control+Shift+PrintScreen", "Control+Alt+S"] as const;
 const overlayReadyTimeoutMs = 3000;
@@ -51,6 +53,7 @@ const editorWindowWidthPx = 860;
 const editorWindowHeightPx = 560;
 const editorWindowMinWidthPx = 720;
 const editorWindowMinHeightPx = 460;
+const appIconRelativePath = path.join("src", "assets", "app-logo.ico");
 const appLogoRelativePath = path.join("src", "assets", "app-logo.png");
 const trayIconLogicalSizePx = 16;
 const trayIconScaleFactor2x = 2;
@@ -78,6 +81,8 @@ interface RecordingTemporaryFile {
 
 class SoftshotApp {
   private activeOverlay: BrowserWindow | null = null;
+
+  private readonly activeEditorWindows = new Set<BrowserWindow>();
 
   private readonly editorDataByWebContents = new Map<number, EditorBootstrap>();
 
@@ -253,8 +258,8 @@ class SoftshotApp {
       show: false,
       autoHideMenuBar: true,
       backgroundColor: "#15171a",
-      icon: this.appLogoPath(),
-      title: "Softshot Editor",
+      icon: this.appIconPath(),
+      title: appName,
       webPreferences: {
         preload: path.join(app.getAppPath(), "dist", "preload.js"),
         contextIsolation: true,
@@ -266,7 +271,7 @@ class SoftshotApp {
 
   private createTray(): Tray {
     const currentTray = new Tray(this.createTrayImage());
-    currentTray.setToolTip(`${appName} - ${this.currentShortcutLabel()}`);
+    currentTray.setToolTip(appName);
     currentTray.setContextMenu(Menu.buildFromTemplate(this.trayMenuTemplate()));
     return currentTray;
   }
@@ -297,8 +302,8 @@ class SoftshotApp {
     return path.join(app.getAppPath(), appLogoRelativePath);
   }
 
-  private currentShortcutLabel(): string {
-    return this.registeredShortcuts.length > 0 ? this.registeredShortcuts.join(" or ") : "tray capture";
+  private appIconPath(): string {
+    return path.join(app.getAppPath(), appIconRelativePath);
   }
 
   private debugLog(message: string): void {
@@ -465,12 +470,14 @@ class SoftshotApp {
     try {
       await app.whenReady();
       app.setName(appName);
+      app.setAppUserModelId(appId);
       this.registerDisplayMediaRequestHandler();
       this.registerIpcHandlers();
       this.registerCaptureShortcuts();
       this.tray = this.createTray();
       await this.showShortcutWarningIfNeeded();
       this.prepareNextOverlay();
+      this.startUpdater();
 
       if (process.env.SOFTSHOT_CAPTURE_ON_READY === "1") {
         setTimeout((): void => {
@@ -491,6 +498,10 @@ class SoftshotApp {
       title,
       body: filePath
     }).show();
+  }
+
+  private canInstallUpdatesNow(): boolean {
+    return !this.activeOverlay && this.activeEditorWindows.size === 0;
   }
 
   private requestActiveOverlayStop(): boolean {
@@ -547,6 +558,15 @@ class SoftshotApp {
     if (this.liveCaptureOverlayWebContentsId === event.sender.id) {
       this.liveCaptureOverlayWebContentsId = null;
     }
+  }
+
+  private startUpdater(): void {
+    startUpdateChecks({
+      canInstallNow: (): boolean => this.canInstallUpdatesNow(),
+      log: (message: string): void => {
+        this.debugLog(message);
+      }
+    });
   }
 
   private preparedOverlayForCapture(display: Display): BrowserWindow {
@@ -736,6 +756,7 @@ class SoftshotApp {
       const overlay = BrowserWindow.fromWebContents(event.sender);
       const editor = this.createEditorWindow();
       const editorWebContentsId = editor.webContents.id;
+      this.activeEditorWindows.add(editor);
       this.editorDataByWebContents.set(editorWebContentsId, {
         durationSeconds,
         fps,
@@ -751,6 +772,7 @@ class SoftshotApp {
       });
 
       editor.on("closed", (): void => {
+        this.activeEditorWindows.delete(editor);
         this.editorDataByWebContents.delete(editorWebContentsId);
         this.editorSavePathsByWebContents.delete(editorWebContentsId);
         void this.cleanupEditorTempFiles(editorWebContentsId).catch((error: unknown): void => {

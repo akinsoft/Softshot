@@ -3,15 +3,22 @@
   "version": "0.1.0",
   "description": "A lightweight screenshot and screen recording tool.",
   "main": "dist/main.js",
+  "author": "Akinsoft",
+  "homepage": "https://github.com/akinsoft/Softshot",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akinsoft/Softshot.git"
+  },
   "scripts": {
     "build": "npm run clean && tsc -p tsconfig.main.json && tsc -p tsconfig.browser.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "dev": "npm run build && electron .",
     "lint": "eslint src --max-warnings=0",
     "lint:fix": "eslint src --fix --max-warnings=0",
-    "start": "npm run build && electron .",
-    "package": "npm run build && electron-builder --win nsis"
+    "package": "npm run build && electron-builder --win nsis",
+    "release": "npm run build && electron-builder --win nsis --publish always",
+    "start": "npm run build && electron ."
   },
   "build": {
     "appId": "com.akinsoft.softshot",
@@ -29,13 +36,22 @@
       "package.json"
     ],
     "win": {
+      "icon": "src/assets/app-logo.ico",
       "target": "nsis"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "akinsoft",
+        "repo": "Softshot",
+        "releaseType": "release"
+      }
+    ]
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
@@ -54,5 +70,8 @@
     "globals": "^17.7.0",
     "typescript": "^5.5.4",
     "typescript-eslint": "^8.63.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }
