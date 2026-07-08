@@ -1,0 +1,40 @@
+{
+  "name": "softshot",
+  "version": "0.1.0",
+  "description": "A lightweight screenshot and screen recording tool.",
+  "main": "dist/main.js",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "npm run build && electron .",
+    "start": "npm run build && electron .",
+    "package": "npm run build && electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "com.akinsoft.softshot",
+    "productName": "Softshot",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src/overlay.html",
+      "src/styles.css",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.5.4"
+  }
+}
