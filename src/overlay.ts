@@ -46,6 +46,7 @@ const countdownCompleteValue = 0;
 const countdownValues = [countdownFirstValue, countdownSecondValue, countdownThirdValue, countdownCompleteValue] as const;
 const countdownStepMs = 1000;
 const countdownZeroHoldMs = 500;
+const liveCaptureClassName = "live-capture";
 const minimumRecordingByteLength = 1;
 const runIdIncrement = 1;
 const videoButtonPopKeyframes = [
@@ -71,6 +72,7 @@ class OverlayApp {
   private readonly screenshotButton = getRequiredElement("screenshot-button", HTMLButtonElement);
   private readonly settingsButton = getRequiredElement("settings-button", HTMLButtonElement);
   private readonly settingsMenu = getRequiredElement("settings-menu", HTMLDivElement);
+  private readonly toolbar = getRequiredElement("capture-toolbar", HTMLDivElement);
   private readonly videoButton = getRequiredElement("video-button", HTMLButtonElement);
   private activeTool = defaultDrawingTool;
   private annotations: Annotation[] = [];
@@ -80,10 +82,13 @@ class OverlayApp {
   private dragState: DragState = null;
   private fps: VideoFps = videoFpsOptions.high;
   private isCountingDown = false;
+  private isLiveCapture = false;
+  private isLiveCaptureMousePassthrough = false;
   private isRecording = false;
   private isRenderQueued = false;
   private quality: VideoQuality = defaultVideoQuality;
   private recordingSession: RecordingSession | null = null;
+  private removeStopRecordingRequestHandler: (() => void) | null = null;
   private selectedColor = defaultPenColor;
   private selection: Rect | null = null;
 
@@ -109,6 +114,8 @@ class OverlayApp {
     this.bindKeyboardEvents();
     this.bindToolbarEvents();
     this.bindMenuEvents();
+    this.bindLiveCaptureEvents();
+    this.bindMainEvents();
   }
 
   private bindKeyboardEvents(): void {
@@ -133,6 +140,18 @@ class OverlayApp {
         event.preventDefault();
         this.runAsync(this.toggleRecording(), "Could not toggle recording.");
       }
+    });
+  }
+
+  private bindLiveCaptureEvents(): void {
+    addEventListener("mousemove", (event): void => {
+      this.updateLiveCaptureMousePassthrough(event);
+    });
+  }
+
+  private bindMainEvents(): void {
+    this.removeStopRecordingRequestHandler = getSoftshotApi().onStopRecordingRequest((): void => {
+      this.runAsync(this.handleStopRecordingRequest(), "Could not stop the recording.");
     });
   }
 
@@ -182,7 +201,7 @@ class OverlayApp {
   }
 
   private bindToolbarEvents(): void {
-    document.querySelector(".toolbar")?.addEventListener("pointerdown", (event): void => {
+    this.toolbar.addEventListener("pointerdown", (event): void => {
       event.stopPropagation();
     });
     this.screenshotButton.addEventListener("click", (): void => {
@@ -208,12 +227,13 @@ class OverlayApp {
     });
   }
 
-  private cancelCountdown(): void {
+  private async cancelCountdown(): Promise<void> {
     this.countdownRunId += runIdIncrement;
     this.isCountingDown = false;
     this.recordingHud.clearCountdown();
     this.syncToolbar();
     this.requestRender();
+    await this.exitLiveCapture();
   }
 
   private cancelDrag(): void {
@@ -265,7 +285,7 @@ class OverlayApp {
 
   private async closeOverlay(): Promise<void> {
     if (this.isCountingDown) {
-      this.cancelCountdown();
+      await this.cancelCountdown();
     }
 
     if (this.isRecording) {
@@ -273,6 +293,8 @@ class OverlayApp {
       return;
     }
 
+    this.unbindMainEvents();
+    await this.exitLiveCapture();
     await getSoftshotApi().closeOverlay();
   }
 
@@ -304,12 +326,48 @@ class OverlayApp {
     this.syncToolbar();
   }
 
+  private async enterLiveCapture(): Promise<void> {
+    if (this.isLiveCapture) {
+      return;
+    }
+
+    this.isLiveCapture = true;
+    this.dragState = null;
+    document.documentElement.classList.add(liveCaptureClassName);
+    this.requestRender();
+
+    try {
+      await getSoftshotApi().setLiveCapture(true);
+      this.isLiveCaptureMousePassthrough = false;
+    } catch (error) {
+      this.isLiveCapture = false;
+      this.isLiveCaptureMousePassthrough = false;
+      document.documentElement.classList.remove(liveCaptureClassName);
+      this.requestRender();
+      throw error;
+    }
+  }
+
+  private async exitLiveCapture(): Promise<void> {
+    if (!this.isLiveCapture) {
+      return;
+    }
+
+    this.isLiveCapture = false;
+    this.isLiveCaptureMousePassthrough = false;
+    document.documentElement.classList.remove(liveCaptureClassName);
+    this.requestRender();
+    await getSoftshotApi().setLiveCapture(false);
+  }
+
   private async finishRecording(result: RecordingResult): Promise<void> {
     this.recordingSession?.stopTracks();
     this.recordingSession = null;
     this.isRecording = false;
     this.recordingHud.stopRecording();
     this.syncToolbar();
+    await this.exitLiveCapture();
+    this.unbindMainEvents();
 
     if (result.bytes.byteLength < minimumRecordingByteLength || !hasWebmCluster(result.bytes)) {
       await getSoftshotApi().closeOverlay();
@@ -317,6 +375,33 @@ class OverlayApp {
     }
 
     await getSoftshotApi().openVideoEditor(result.bytes, this.fps, result.durationSeconds, result.mimeType);
+  }
+
+  private async handleStopRecordingRequest(): Promise<void> {
+    if (this.isRecording) {
+      await this.stopRecording();
+      return;
+    }
+
+    if (this.isCountingDown) {
+      await this.cancelCountdown();
+    }
+  }
+
+  private async setLiveCaptureMousePassthrough(isPassthrough: boolean): Promise<void> {
+    if (!this.isLiveCapture || this.isLiveCaptureMousePassthrough === isPassthrough) {
+      return;
+    }
+
+    const wasPassthrough = this.isLiveCaptureMousePassthrough;
+    this.isLiveCaptureMousePassthrough = isPassthrough;
+
+    try {
+      await getSoftshotApi().setLiveCaptureMousePassthrough(isPassthrough);
+    } catch (error) {
+      this.isLiveCaptureMousePassthrough = wasPassthrough;
+      throw error;
+    }
   }
 
   private onPointerDown(event: PointerEvent): void {
@@ -392,12 +477,7 @@ class OverlayApp {
   }
 
   private pulseToolbar(): void {
-    const toolbar = document.querySelector<HTMLElement>(".toolbar");
-    if (!toolbar) {
-      return;
-    }
-
-    toolbar.animate(
+    this.toolbar.animate(
       [
         { transform: "translateX(-50%) scale(1)" },
         { transform: "translateX(-50%) scale(1.035)" },
@@ -417,6 +497,13 @@ class OverlayApp {
     const width = window.innerWidth;
     const height = window.innerHeight;
     this.context.clearRect(zeroPoint.x, zeroPoint.y, width, height);
+
+    if (this.isLiveCapture) {
+      this.renderSelection();
+      this.recordingHud.refresh();
+      return;
+    }
+
     this.context.fillStyle = dimColor;
     this.context.fillRect(zeroPoint.x, zeroPoint.y, width, height);
     this.renderSelection();
@@ -541,7 +628,7 @@ class OverlayApp {
   private shouldIgnorePointerDown(event: PointerEvent): boolean {
     const isToolbarTarget = Boolean((event.target as HTMLElement).closest(".toolbar"));
     const isRecordingSelectionLocked = this.isRecording && this.activeTool === "select";
-    return isToolbarTarget || this.isCountingDown || isRecordingSelectionLocked;
+    return this.isLiveCapture || isToolbarTarget || this.isCountingDown || isRecordingSelectionLocked;
   }
 
   private startAnnotationDrag(point: Point, pointerId: number): void {
@@ -586,6 +673,7 @@ class OverlayApp {
       this.recordingSession = null;
       this.recordingHud.stopRecording();
       this.syncToolbar();
+      await this.exitLiveCapture();
       await this.reportError("Could not start the recording.", error);
     }
   }
@@ -599,6 +687,14 @@ class OverlayApp {
     const runId = this.countdownRunId;
     this.isCountingDown = true;
     this.syncToolbar();
+    try {
+      await this.enterLiveCapture();
+    } catch (error) {
+      this.isCountingDown = false;
+      this.recordingHud.clearCountdown();
+      this.syncToolbar();
+      throw error;
+    }
 
     for (const value of countdownValues) {
       if (this.shouldStopCountdown(runId)) {
@@ -675,7 +771,7 @@ class OverlayApp {
     }
 
     if (this.isCountingDown) {
-      this.cancelCountdown();
+      await this.cancelCountdown();
       return;
     }
 
@@ -686,6 +782,23 @@ class OverlayApp {
     }
 
     await this.startRecordingCountdown();
+  }
+
+  private unbindMainEvents(): void {
+    this.removeStopRecordingRequestHandler?.();
+    this.removeStopRecordingRequestHandler = null;
+  }
+
+  private updateLiveCaptureMousePassthrough(event: MouseEvent): void {
+    if (!this.isLiveCapture) {
+      return;
+    }
+
+    const isToolbarTarget = event.target instanceof Node && this.toolbar.contains(event.target);
+    this.runAsync(
+      this.setLiveCaptureMousePassthrough(!isToolbarTarget),
+      "Could not update live capture mouse passthrough."
+    );
   }
 
   private updateRecordingSetting(button: HTMLButtonElement): void {

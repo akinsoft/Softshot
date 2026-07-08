@@ -1,6 +1,17 @@
 import { contextBridge, ipcRenderer } from "electron";
 
-import type { EditorBootstrap, OverlayBootstrap, PreparedVideoFile, SaveDialogResult, SaveResult, SoftshotApi, VideoFps } from "./shared";
+import type {
+  EditorBootstrap,
+  OverlayBootstrap,
+  PreparedVideoFile,
+  SaveDialogResult,
+  SaveResult,
+  SoftshotApi,
+  StopRecordingRequestHandler,
+  VideoFps
+} from "./shared";
+
+const stopRecordingRequestChannel = "overlay:stop-recording";
 
 const api: SoftshotApi = {
   getBootstrap: async () => ipcRenderer.invoke("overlay:get-bootstrap") as Promise<OverlayBootstrap>,
@@ -18,6 +29,19 @@ const api: SoftshotApi = {
   copyPreparedEditorVideo: async (filePath: string) => ipcRenderer.invoke("editor:copy-prepared-video", filePath) as Promise<void>,
   closeEditor: async () => ipcRenderer.invoke("editor:close") as Promise<void>,
   readyToShow: async () => ipcRenderer.invoke("overlay:ready-to-show") as Promise<void>,
+  setLiveCapture: async (isLive: boolean) => ipcRenderer.invoke("overlay:set-live-capture", isLive) as Promise<void>,
+  setLiveCaptureMousePassthrough: async (isPassthrough: boolean) =>
+    ipcRenderer.invoke("overlay:set-live-capture-mouse-passthrough", isPassthrough) as Promise<void>,
+  onStopRecordingRequest: (handler: StopRecordingRequestHandler) => {
+    const listener = (): void => {
+      handler();
+    };
+
+    ipcRenderer.on(stopRecordingRequestChannel, listener);
+    return (): void => {
+      ipcRenderer.removeListener(stopRecordingRequestChannel, listener);
+    };
+  },
   closeOverlay: async () => ipcRenderer.invoke("overlay:close") as Promise<void>,
   showError: async (message: string) => ipcRenderer.invoke("overlay:show-error", message) as Promise<void>
 };

@@ -22,6 +22,11 @@ body {
   user-select: none;
 }
 
+html.live-capture,
+html.live-capture body {
+  background: transparent;
+}
+
 #screen-image,
 #annotation-canvas {
   position: fixed;
@@ -35,8 +40,17 @@ body {
   pointer-events: none;
 }
 
+html.live-capture #screen-image {
+  display: none;
+}
+
 #annotation-canvas {
   z-index: 5;
+  pointer-events: auto;
+}
+
+html.live-capture #annotation-canvas {
+  pointer-events: none;
 }
 
 .recording-hud {

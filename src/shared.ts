@@ -50,6 +50,8 @@ export interface PreparedVideoFile {
   filePath: string;
 }
 
+export type StopRecordingRequestHandler = () => void;
+
 export interface SoftshotApi {
   getBootstrap(): Promise<OverlayBootstrap>;
   saveScreenshot(dataUrl: string): Promise<SaveResult>;
@@ -62,6 +64,9 @@ export interface SoftshotApi {
   copyPreparedEditorVideo(filePath: string): Promise<void>;
   closeEditor(): Promise<void>;
   readyToShow(): Promise<void>;
+  setLiveCapture(isLive: boolean): Promise<void>;
+  setLiveCaptureMousePassthrough(isPassthrough: boolean): Promise<void>;
+  onStopRecordingRequest(handler: StopRecordingRequestHandler): () => void;
   closeOverlay(): Promise<void>;
   showError(message: string): Promise<void>;
 }

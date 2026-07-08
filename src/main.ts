@@ -35,6 +35,7 @@ const clipboardFileEnvironmentName = "SOFTSHOT_CLIPBOARD_FILE";
 const clipboardFolderName = "clipboard";
 const frozenCaptureFileEnvironmentName = "SOFTSHOT_FROZEN_CAPTURE_FILE";
 const perMonitorDpiAwareV2 = -4;
+const transparentWindowBackground = "#00000000";
 const editorWindowWidthPx = 860;
 const editorWindowHeightPx = 560;
 const editorWindowMinWidthPx = 720;
@@ -58,6 +59,8 @@ class SoftshotApp {
 
   private isPrintScreenUnavailable = false;
 
+  private liveCaptureOverlayWebContentsId: number | null = null;
+
   private readonly overlayDataByWebContents = new Map<number, OverlayBootstrap>();
 
   private registeredShortcuts: string[] = [];
@@ -65,6 +68,10 @@ class SoftshotApp {
   private tray: Tray | null = null;
 
   private capture(): void {
+    if (this.requestActiveOverlayStop()) {
+      return;
+    }
+
     this.debugLog("capture requested");
     void this.openOverlayWithErrorHandling();
   }
@@ -122,9 +129,12 @@ class SoftshotApp {
       alwaysOnTop: true,
       skipTaskbar: true,
       show: false,
-      backgroundColor: "#050506",
+      backgroundColor: transparentWindowBackground,
+      hasShadow: false,
+      transparent: true,
       webPreferences: {
         preload: path.join(app.getAppPath(), "dist", "preload.js"),
+        backgroundThrottling: false,
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false
@@ -270,6 +280,19 @@ class SoftshotApp {
     return data;
   }
 
+  private getSenderOverlay(event: Electron.IpcMainInvokeEvent): BrowserWindow {
+    const overlay = BrowserWindow.fromWebContents(event.sender);
+    if (!overlay || overlay.isDestroyed()) {
+      throw new Error("Missing overlay window.");
+    }
+
+    if (this.activeOverlay !== overlay) {
+      throw new Error("Only the active capture overlay can change live capture state.");
+    }
+
+    return overlay;
+  }
+
   private handleOverlayReadinessTimeout(overlay: BrowserWindow): void {
     if (overlay.isDestroyed() || overlay.isVisible()) {
       return;
@@ -309,6 +332,62 @@ class SoftshotApp {
       title,
       body: filePath
     }).show();
+  }
+
+  private requestActiveOverlayStop(): boolean {
+    const overlay = this.activeOverlay;
+    if (!overlay || overlay.isDestroyed() || overlay.webContents.id !== this.liveCaptureOverlayWebContentsId) {
+      return false;
+    }
+
+    this.debugLog("forwarding capture request to live overlay");
+    overlay.webContents.send("overlay:stop-recording");
+    return true;
+  }
+
+  private setLiveCaptureMouseMode(overlay: BrowserWindow, isPassthrough: boolean): void {
+    if (isPassthrough) {
+      overlay.setIgnoreMouseEvents(true, { forward: true });
+      overlay.setFocusable(false);
+      overlay.blur();
+      return;
+    }
+
+    overlay.setIgnoreMouseEvents(false);
+    overlay.setFocusable(true);
+    overlay.focus();
+  }
+
+  private setLiveCaptureMousePassthrough(event: Electron.IpcMainInvokeEvent, isPassthrough: boolean): void {
+    if (typeof isPassthrough !== "boolean") {
+      throw new TypeError("Live capture mouse passthrough state must be a boolean.");
+    }
+
+    if (event.sender.id !== this.liveCaptureOverlayWebContentsId) {
+      throw new Error("Only the live capture overlay can change mouse passthrough state.");
+    }
+
+    this.setLiveCaptureMouseMode(this.getSenderOverlay(event), isPassthrough);
+  }
+
+  private setLiveCaptureState(event: Electron.IpcMainInvokeEvent, isLive: boolean): void {
+    if (typeof isLive !== "boolean") {
+      throw new TypeError("Live capture state must be a boolean.");
+    }
+
+    if (isLive) {
+      const overlay = this.getSenderOverlay(event);
+      this.liveCaptureOverlayWebContentsId = event.sender.id;
+      this.setLiveCaptureMouseMode(overlay, false);
+      return;
+    }
+
+    const overlay = this.getSenderOverlay(event);
+    this.setLiveCaptureMouseMode(overlay, false);
+
+    if (this.liveCaptureOverlayWebContentsId === event.sender.id) {
+      this.liveCaptureOverlayWebContentsId = null;
+    }
   }
 
   private async chooseEditorVideoSavePath(event: Electron.IpcMainInvokeEvent): Promise<SaveDialogResult> {
@@ -393,6 +472,10 @@ class SoftshotApp {
       this.debugLog("overlay closed");
       this.overlayDataByWebContents.delete(overlayWebContentsId);
       this.displayMediaDisplayIdsByWebContents.delete(overlayWebContentsId);
+      if (this.liveCaptureOverlayWebContentsId === overlayWebContentsId) {
+        this.liveCaptureOverlayWebContentsId = null;
+      }
+
       if (this.activeOverlay === overlay) {
         this.activeOverlay = null;
       }
@@ -513,6 +596,14 @@ class SoftshotApp {
       overlay.setFullScreen(true);
       overlay.setAlwaysOnTop(true, "screen-saver");
       overlay.focus();
+    });
+
+    ipcMain.handle("overlay:set-live-capture", (event, isLive: boolean): void => {
+      this.setLiveCaptureState(event, isLive);
+    });
+
+    ipcMain.handle("overlay:set-live-capture-mouse-passthrough", (event, isPassthrough: boolean): void => {
+      this.setLiveCaptureMousePassthrough(event, isPassthrough);
     });
 
     ipcMain.handle("overlay:show-error", async (event, message: string): Promise<void> => {
