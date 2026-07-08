@@ -1,7 +1,5 @@
 import { app, Notification } from "electron";
-import electronUpdater from "electron-updater";
-
-const { autoUpdater } = electronUpdater;
+import { autoUpdater } from "electron-updater";
 
 const appName = "Softshot";
 const updateCheckDelayMs = 2500;
