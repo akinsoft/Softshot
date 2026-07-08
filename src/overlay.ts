@@ -78,6 +78,7 @@ class OverlayApp {
   private readonly settingsMenu = getRequiredElement("settings-menu", HTMLDivElement);
   private readonly toolbar = getRequiredElement("capture-toolbar", HTMLDivElement);
   private readonly videoButton = getRequiredElement("video-button", HTMLButtonElement);
+  private readonly screenshotToolButtons: HTMLButtonElement[] = [this.penButton, this.arrowButton, this.colorButton];
   private activeTool = defaultDrawingTool;
   private annotations: Annotation[] = [];
   private bootstrap: OverlayBootstrap | null = null;
@@ -795,7 +796,8 @@ class OverlayApp {
 
   private syncToolbar(): void {
     const videoState = this.videoButtonState();
-    this.toolbar.classList.toggle("video-mode", this.captureMode === "video");
+    const isVideoMode = this.captureMode === "video";
+    this.toolbar.classList.toggle("video-mode", isVideoMode);
     this.screenshotButton.classList.toggle("active", this.captureMode === "screenshot");
     this.videoButton.classList.toggle("active", this.captureMode === "video");
     this.videoButton.classList.toggle("recording", this.isRecording || this.isCountingDown);
@@ -804,6 +806,7 @@ class OverlayApp {
     this.setVideoButtonState(videoState);
     this.penButton.classList.toggle("active", this.activeTool === "pen");
     this.arrowButton.classList.toggle("active", this.activeTool === "arrow");
+    this.syncScreenshotToolAvailability(isVideoMode);
     document.documentElement.style.setProperty("--accent", this.selectedColor);
     this.syncColorMenu();
     this.syncSettingsMenu();
@@ -822,6 +825,14 @@ class OverlayApp {
 
     for (const button of this.settingsMenu.querySelectorAll<HTMLButtonElement>("[data-fps]")) {
       button.classList.toggle("selected", Number(button.dataset.fps) === this.fps);
+    }
+  }
+
+  private syncScreenshotToolAvailability(isVideoMode: boolean): void {
+    for (const button of this.screenshotToolButtons) {
+      button.disabled = isVideoMode;
+      button.ariaHidden = String(isVideoMode);
+      button.tabIndex = isVideoMode ? -1 : 0;
     }
   }
 

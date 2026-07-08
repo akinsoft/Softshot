@@ -128,7 +128,6 @@ html.live-capture #annotation-canvas {
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 5px;
   min-height: 54px;
   padding: 6px;
   border: 1px solid var(--chrome-border);
@@ -139,22 +138,43 @@ html.live-capture #annotation-canvas {
   cursor: default;
 }
 
-.toolbar.video-mode .screenshot-tool {
-  display: none;
-}
-
 .tool-button {
   position: relative;
   display: grid;
+  flex: 0 0 42px;
   place-items: center;
   width: 42px;
   height: 42px;
+  margin-right: 5px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
   color: #f4f7fb;
   cursor: pointer;
+  overflow: hidden;
+  transition:
+    flex-basis 210ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 210ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    margin-right 210ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 150ms ease,
+    padding 210ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 210ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.tool-button:last-of-type {
+  margin-right: 0;
+}
+
+.toolbar.video-mode .screenshot-tool {
+  flex-basis: 0;
+  width: 0;
+  margin-right: 0;
+  padding-right: 0;
+  padding-left: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: scaleX(0.28);
 }
 
 .tool-button:hover,
