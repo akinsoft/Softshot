@@ -1,8 +1,8 @@
 :root {
   color-scheme: dark;
   --accent: #38bdf8;
-  --chrome: rgba(15, 17, 20, 0.96);
-  --chrome-border: rgba(255, 255, 255, 0.16);
+  --chrome: rgba(13, 14, 16, 0.94);
+  --chrome-border: rgba(255, 255, 255, 0.22);
   --control-hover: rgba(255, 255, 255, 0.1);
   --timeline-gutter: 10px;
   --track: rgba(255, 255, 255, 0.16);

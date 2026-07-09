@@ -6,6 +6,7 @@ import {
   normalizeMicrophoneDeviceId
 } from "./audio-devices.js";
 import type { AppSettings, AppSettingsUpdate, SettingsKeybindEvent, SoftshotApi } from "./shared";
+import { TooltipController } from "./ui-tooltip.js";
 
 const statusClearDelayMs = 1400;
 const keySeparator = "+";
@@ -49,6 +50,8 @@ class SettingsController {
   private readonly systemAudioCheckbox = getRequiredElement("system-audio-checkbox", HTMLInputElement);
 
   private readonly status = getRequiredElement("settings-status", HTMLSpanElement);
+
+  private readonly tooltips = new TooltipController(document.body);
 
   private isRecordingKeybind = false;
 
@@ -137,6 +140,8 @@ class SettingsController {
   }
 
   private wireEvents(): void {
+    this.tooltips.bind();
+
     this.closeButton.addEventListener("click", (): void => {
       void this.closeSettings();
     });

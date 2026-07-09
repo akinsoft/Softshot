@@ -28,7 +28,7 @@ const api: SoftshotApi = {
     ipcRenderer.invoke("recording:discard-file", recordingId) as Promise<void>,
   getBootstrap: async () => ipcRenderer.invoke("overlay:get-bootstrap") as Promise<OverlayBootstrap>,
   saveScreenshot: async (dataUrl: string) =>
-    ipcRenderer.invoke("capture:save-screenshot", dataUrl) as Promise<SaveResult>,
+    ipcRenderer.invoke("capture:save-screenshot", dataUrl) as Promise<SaveDialogResult>,
   copyScreenshot: async (dataUrl: string) => ipcRenderer.invoke("capture:copy-screenshot", dataUrl) as Promise<void>,
   openVideoEditor: async (
     recordingId: string,

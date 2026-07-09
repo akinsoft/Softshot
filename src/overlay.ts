@@ -36,6 +36,7 @@ import { type RecordingResult, RecordingSession } from "./recording-session.js";
 import type { AppSettings, AppSettingsUpdate, CaptureMode, OverlayBootstrap, Rect, VideoFps, VideoQuality } from "./shared.js";
 import { videoFpsOptions } from "./shared.js";
 import { getSoftshotApi } from "./softshot-api.js";
+import { setTooltipLabel, TooltipController } from "./ui-tooltip.js";
 
 const canvasContextError = "Could not create the overlay drawing context.";
 const copyShortcutKey = "c";
@@ -45,11 +46,12 @@ const enterKey = "Enter";
 const escapeKey = "Escape";
 const frameScale = { x: 1, y: 1 };
 const screenshotCanvasContextError = "Could not create the screenshot canvas.";
+const screenshotCopyAction = "copy";
+const screenshotSaveAction = "save";
 const spaceKey = " ";
 const toolbarPulseDurationMs = 160;
 const videoButtonAnimationDurationMs = 220;
 const zeroPoint = { x: 0, y: 0 };
-const ariaLabelAttribute = "aria-label";
 const mediaDeviceChangeEventName = "devicechange";
 const countdownFirstValue = 3;
 const countdownSecondValue = 2;
@@ -83,10 +85,12 @@ class OverlayApp {
   private readonly recordingHud = new RecordingHudController();
   private readonly screenImage = getRequiredElement("screen-image", HTMLImageElement);
   private readonly screenshotButton = getRequiredElement("screenshot-button", HTMLButtonElement);
+  private readonly screenshotMenu = getRequiredElement("screenshot-menu", HTMLDivElement);
   private readonly settingsButton = getRequiredElement("settings-button", HTMLButtonElement);
   private readonly settingsMenu = getRequiredElement("settings-menu", HTMLDivElement);
   private readonly systemAudioButton = getRequiredElement("system-audio-button", HTMLButtonElement);
   private readonly toolbar = getRequiredElement("capture-toolbar", HTMLDivElement);
+  private readonly tooltips = new TooltipController(this.toolbar);
   private readonly videoButton = getRequiredElement("video-button", HTMLButtonElement);
   private readonly screenshotToolButtons: HTMLButtonElement[] = [this.penButton, this.arrowButton, this.colorButton];
   private readonly videoToolButtons: HTMLButtonElement[] = [this.microphoneButton, this.systemAudioButton];
@@ -184,6 +188,16 @@ class OverlayApp {
   }
 
   private bindMenuEvents(): void {
+    this.screenshotMenu.addEventListener("click", (event): void => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-screenshot-action]");
+      if (!button) {
+        return;
+      }
+
+      this.hideMenu(this.screenshotMenu);
+      this.runScreenshotAction(button.dataset.screenshotAction);
+    });
+
     this.colorMenu.addEventListener("click", (event): void => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-color]");
       if (!button) {
@@ -239,6 +253,7 @@ class OverlayApp {
   }
 
   private bindToolbarEvents(): void {
+    this.tooltips.bind();
     this.toolbar.addEventListener("pointerdown", (event): void => {
       event.stopPropagation();
     });
@@ -255,20 +270,20 @@ class OverlayApp {
       this.selectTool("arrow");
     });
     this.colorButton.addEventListener("click", (): void => {
-      this.toggleMenu(this.colorMenu, [this.microphoneMenu, this.settingsMenu]);
+      this.toggleMenu(this.colorMenu, [this.screenshotMenu, this.microphoneMenu, this.settingsMenu]);
     });
     this.microphoneButton.addEventListener("click", (): void => {
       if (this.captureMode !== "video") {
         return;
       }
 
-      this.toggleMenu(this.microphoneMenu, [this.colorMenu, this.settingsMenu]);
+      this.toggleMenu(this.microphoneMenu, [this.screenshotMenu, this.colorMenu, this.settingsMenu]);
     });
     this.systemAudioButton.addEventListener("click", (): void => {
       this.runAsync(this.toggleSystemAudio(), "Could not update desktop audio.");
     });
     this.settingsButton.addEventListener("click", (): void => {
-      this.toggleMenu(this.settingsMenu, [this.colorMenu, this.microphoneMenu]);
+      this.toggleMenu(this.settingsMenu, [this.screenshotMenu, this.colorMenu, this.microphoneMenu]);
     });
     this.closeButton.addEventListener("click", (): void => {
       this.runAsync(this.closeOverlay(), "Could not close the overlay.");
@@ -291,6 +306,7 @@ class OverlayApp {
   }
 
   private closeMenus(): void {
+    this.hideMenu(this.screenshotMenu);
     this.hideMenu(this.colorMenu);
     this.hideMenu(this.microphoneMenu);
     this.hideMenu(this.settingsMenu);
@@ -333,6 +349,14 @@ class OverlayApp {
     }
 
     this.hideMenu(menu);
+  }
+
+  private showScreenshotMenu(): void {
+    for (const menu of [this.colorMenu, this.microphoneMenu, this.settingsMenu]) {
+      this.hideMenu(menu);
+    }
+
+    this.showMenu(this.screenshotMenu);
   }
 
   private async closeOverlay(): Promise<void> {
@@ -633,15 +657,18 @@ class OverlayApp {
   }
 
   private onScreenshotButtonClick(): void {
-    this.closeMenus();
     this.captureMode = "screenshot";
     this.activeTool = "select";
     this.stopMicrophoneMonitor();
     this.syncToolbar();
 
-    if (this.selection) {
-      this.runAsync(this.saveScreenshot(), "Could not save the screenshot.");
+    if (!this.selection) {
+      this.closeMenus();
+      this.pulseToolbar();
+      return;
     }
+
+    this.showScreenshotMenu();
   }
 
   private onVideoButtonClick(): void {
@@ -779,6 +806,17 @@ class OverlayApp {
     }
 
     await getSoftshotApi().saveScreenshot(dataUrl);
+  }
+
+  private runScreenshotAction(action: string | undefined): void {
+    if (action === screenshotCopyAction) {
+      this.runAsync(this.copyScreenshot(), "Could not copy the screenshot.");
+      return;
+    }
+
+    if (action === screenshotSaveAction) {
+      this.runAsync(this.saveScreenshot(), "Could not save the screenshot.");
+    }
   }
 
   private async prepareRecordingSession(): Promise<RecordingSessionPreparation> {
@@ -979,8 +1017,7 @@ class OverlayApp {
     this.screenshotButton.classList.toggle("active", this.captureMode === "screenshot");
     this.videoButton.classList.toggle("active", this.captureMode === "video");
     this.videoButton.classList.toggle("recording", this.isRecording || this.isCountingDown);
-    this.videoButton.title = this.videoButtonTitle(videoState);
-    this.videoButton.setAttribute(ariaLabelAttribute, this.videoButton.title);
+    setTooltipLabel(this.videoButton, this.videoButtonTitle(videoState));
     this.setVideoButtonState(videoState);
     this.penButton.classList.toggle("active", this.activeTool === "pen");
     this.arrowButton.classList.toggle("active", this.activeTool === "arrow");
@@ -999,12 +1036,10 @@ class OverlayApp {
 
     const microphoneLabel = microphoneSelectionLabel(this.microphoneDeviceId, this.microphoneDevices);
     this.microphoneButton.classList.toggle("muted", this.microphoneDeviceId === null);
-    this.microphoneButton.title = `Microphone: ${microphoneLabel}`;
-    this.microphoneButton.setAttribute(ariaLabelAttribute, this.microphoneButton.title);
+    setTooltipLabel(this.microphoneButton, `Microphone: ${microphoneLabel}`);
     this.systemAudioButton.classList.toggle("active", this.systemAudioEnabled);
     this.systemAudioButton.classList.toggle("muted", !this.systemAudioEnabled);
-    this.systemAudioButton.title = this.systemAudioEnabled ? "Desktop audio: on" : "Desktop audio: off";
-    this.systemAudioButton.setAttribute(ariaLabelAttribute, this.systemAudioButton.title);
+    setTooltipLabel(this.systemAudioButton, this.systemAudioEnabled ? "Desktop audio: on" : "Desktop audio: off");
     this.renderMicrophoneMenu();
   }
 
@@ -1144,6 +1179,9 @@ class OverlayApp {
     this.annotations = [];
     this.activeTool = "select";
     this.recordingHud.setSelection(this.selection);
+    if (this.captureMode === "screenshot") {
+      this.showScreenshotMenu();
+    }
   }
 
   private shouldStopCountdown(runId: number): boolean {

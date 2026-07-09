@@ -4,9 +4,9 @@ import { getRequiredElement } from "./overlay-dom.js";
 import type { AudioSourceKind, EditorAudioTrack, EditorBootstrap, PreparedVideoFile, VideoFps } from "./shared.js";
 import { videoFpsOptions } from "./shared.js";
 import { getSoftshotApi } from "./softshot-api.js";
+import { setTooltipLabel, TooltipController } from "./ui-tooltip.js";
 
 const defaultMimeType = "video/webm";
-const ariaLabelAttribute = "aria-label";
 const audioLevelCssProperty = "--audio-level";
 const minimumTrimDurationSeconds = 0.05;
 const prepareDebounceMs = 350;
@@ -60,6 +60,7 @@ class VideoEditorApp {
   private readonly timeline = getRequiredElement("timeline", HTMLDivElement);
   private readonly timelineTrack = getRequiredElement("timeline-track", HTMLDivElement);
   private readonly totalTimeText = getRequiredElement("total-time", HTMLSpanElement);
+  private readonly tooltips = new TooltipController(document.body);
   private readonly video = getRequiredElement("editor-video", HTMLVideoElement);
   private activeTimelinePointerId = noPointerId;
   private audioMeterFrame: number | null = null;
@@ -85,6 +86,7 @@ class VideoEditorApp {
   private readonly mutedAudioKinds = new Set<AudioSourceKind>();
 
   private bindEvents(): void {
+    this.tooltips.bind();
     this.bindKeyboardEvents();
     this.closeButton.addEventListener("click", (): void => {
       this.runAsync(this.closeEditor(), "Could not close the editor.");
@@ -370,8 +372,7 @@ class VideoEditorApp {
     const icon = document.createElement("span");
     const label = audioTrackLabel(audioTrack.kind);
     icon.className = "audio-track-icon";
-    icon.title = label;
-    icon.setAttribute(ariaLabelAttribute, label);
+    setTooltipLabel(icon, label);
     icon.innerHTML = audioTrackIcon(audioTrack.kind);
 
     const line = document.createElement("span");
@@ -394,8 +395,7 @@ class VideoEditorApp {
     button.className = "audio-track-mute";
     button.type = "button";
     button.dataset.audioKind = kind;
-    button.title = isMuted ? `Unmute ${audioTrackLabel(kind)}` : `Mute ${audioTrackLabel(kind)}`;
-    button.setAttribute(ariaLabelAttribute, button.title);
+    setTooltipLabel(button, isMuted ? `Unmute ${audioTrackLabel(kind)}` : `Mute ${audioTrackLabel(kind)}`);
     button.innerHTML = audioTrackMuteIcon(isMuted);
     return button;
   }
@@ -545,8 +545,7 @@ class VideoEditorApp {
 
   private syncPlayButton(): void {
     this.playButton.dataset.state = this.video.paused ? "play" : "pause";
-    this.playButton.setAttribute(ariaLabelAttribute, this.video.paused ? "Play" : "Pause");
-    this.playButton.title = this.video.paused ? "Play" : "Pause";
+    setTooltipLabel(this.playButton, this.video.paused ? "Play" : "Pause");
   }
 
   private syncPlaybackTime(): void {

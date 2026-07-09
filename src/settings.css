@@ -1,6 +1,8 @@
 :root {
   color-scheme: dark;
   --accent: #38bdf8;
+  --chrome: rgba(13, 14, 16, 0.94);
+  --chrome-border: rgba(255, 255, 255, 0.22);
   --control-hover: rgba(255, 255, 255, 0.1);
   --window: #202224;
 }
@@ -224,18 +226,29 @@ body {
 }
 
 .settings-select {
+  color-scheme: dark;
   min-width: 168px;
   max-width: 210px;
   min-height: 36px;
   padding: 0 10px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 7px;
-  background: rgba(17, 18, 20, 0.72);
+  border: 1px solid var(--chrome-border);
+  border-radius: 8px;
+  background: var(--chrome);
   color: #fff;
   cursor: pointer;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
+}
+
+.settings-select option {
+  background: #0d0e10;
+  color: #f5f7fb;
+}
+
+.settings-select option:checked {
+  background: #1f5367;
+  color: #fff;
 }
 
 .settings-select:hover,

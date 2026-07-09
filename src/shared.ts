@@ -99,7 +99,7 @@ export interface SoftshotApi {
   createRecordingFile(): Promise<RecordingFile>;
   discardRecordingFile(recordingId: string): Promise<void>;
   getBootstrap(): Promise<OverlayBootstrap>;
-  saveScreenshot(dataUrl: string): Promise<SaveResult>;
+  saveScreenshot(dataUrl: string): Promise<SaveDialogResult>;
   copyScreenshot(dataUrl: string): Promise<void>;
   openVideoEditor(
     recordingId: string,

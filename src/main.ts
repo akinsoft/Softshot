@@ -179,8 +179,6 @@ const globalShortcutPunctuationKeys = [
 ] as const;
 const globalShortcutSingleCharacterKeys = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".split("");
 
-type CaptureFolder = "pictures" | "videos";
-type CaptureExtension = "png" | "webm";
 interface PendingOverlayBootstrap {
   promise: Promise<OverlayBootstrap>;
   reject(error: Error): void;
@@ -856,6 +854,32 @@ class SoftshotApp {
       resolve: resolveBootstrap
     });
     return await promise;
+  }
+
+  private async chooseScreenshotSavePath(event: Electron.IpcMainInvokeEvent): Promise<string | null> {
+    const targetDirectory = path.join(app.getPath("pictures"), appName);
+    await mkdir(targetDirectory, { recursive: true });
+
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    const options: Electron.SaveDialogOptions = {
+      defaultPath: path.join(targetDirectory, `${appName} ${this.timestamp()}.png`),
+      filters: [
+        {
+          name: "PNG image",
+          extensions: ["png"]
+        }
+      ],
+      title: "Save screenshot"
+    };
+    const result = parentWindow && !parentWindow.isDestroyed()
+      ? await dialog.showSaveDialog(parentWindow, options)
+      : await dialog.showSaveDialog(options);
+
+    if (result.canceled || !result.filePath) {
+      return null;
+    }
+
+    return result.filePath;
   }
 
   private async chooseEditorVideoSavePath(event: Electron.IpcMainInvokeEvent): Promise<SaveDialogResult> {
@@ -1541,10 +1565,14 @@ class SoftshotApp {
       await dialog.showMessageBox(options);
     });
 
-    ipcMain.handle("capture:save-screenshot", async (event, dataUrl: string): Promise<SaveResult> => {
+    ipcMain.handle("capture:save-screenshot", async (event, dataUrl: string): Promise<SaveDialogResult> => {
       const buffer = this.pngBufferFromDataUrl(dataUrl);
-      const filePath = await this.writeCaptureFile("pictures", "png", buffer);
-      clipboard.writeImage(nativeImage.createFromBuffer(buffer));
+      const filePath = await this.chooseScreenshotSavePath(event);
+      if (!filePath) {
+        return { filePath: null };
+      }
+
+      await writeFile(filePath, buffer);
       this.notifySaved("Screenshot saved", filePath);
       this.closeSenderWindow(event);
       return { filePath };
@@ -1771,15 +1799,6 @@ class SoftshotApp {
     overlay.webContents.on("render-process-gone", (event, details): void => {
       this.debugLog(`renderer gone reason=${details.reason} exitCode=${String(details.exitCode)} observed=${String(event.defaultPrevented)}`);
     });
-  }
-
-  private async writeCaptureFile(folderName: CaptureFolder, extension: CaptureExtension, data: Buffer): Promise<string> {
-    const targetDirectory = path.join(app.getPath(folderName), appName);
-    await mkdir(targetDirectory, { recursive: true });
-
-    const filePath = path.join(targetDirectory, `${appName} ${this.timestamp()}.${extension}`);
-    await writeFile(filePath, data);
-    return filePath;
   }
 
   private async cleanupEditorTempFiles(webContentsId: number): Promise<void> {

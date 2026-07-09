@@ -1,0 +1,58 @@
+.softshot-tooltip {
+  position: fixed;
+  z-index: 1000;
+  max-width: 220px;
+  padding: 7px 10px;
+  border: 1px solid var(--chrome-border, rgba(255, 255, 255, 0.22));
+  border-radius: 8px;
+  background: var(--chrome, rgba(13, 14, 16, 0.94));
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.42);
+  color: #f4f7fb;
+  font-size: 12px;
+  font-weight: 600;
+  isolation: isolate;
+  line-height: 1.25;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: softshot-tooltip-pop 120ms ease both;
+}
+
+.softshot-tooltip[hidden] {
+  display: none;
+}
+
+.softshot-tooltip::before {
+  content: "";
+  position: absolute;
+  left: var(--tooltip-arrow-x, 50%);
+  z-index: -1;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--chrome-border, rgba(255, 255, 255, 0.22));
+  background: var(--chrome, rgba(13, 14, 16, 0.94));
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.softshot-tooltip.below::before {
+  top: -5px;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.softshot-tooltip.above::before {
+  bottom: -5px;
+  border-top: 0;
+  border-left: 0;
+}
+
+@keyframes softshot-tooltip-pop {
+  from {
+    opacity: 0;
+    transform: translateY(2px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

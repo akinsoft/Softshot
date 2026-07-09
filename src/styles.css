@@ -260,12 +260,13 @@ html.live-capture #annotation-canvas {
 
 .with-swatch .color-swatch {
   position: absolute;
-  right: 8px;
+  left: 50%;
   bottom: 6px;
   width: 16px;
   height: 3px;
   border-radius: 999px;
   background: var(--accent);
+  transform: translateX(-50%);
 }
 
 .large-swatch {
@@ -328,7 +329,7 @@ html.live-capture #annotation-canvas {
   padding: 8px;
   border: 1px solid var(--chrome-border);
   border-radius: 8px;
-  background: rgba(16, 18, 21, 0.98);
+  background: var(--chrome);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.42);
 }
 
@@ -347,12 +348,19 @@ html.live-capture #annotation-canvas {
   min-width: auto;
 }
 
+.screenshot-menu {
+  right: auto;
+  left: 6px;
+  min-width: 128px;
+}
+
 .color-choice {
   width: 26px;
   height: 26px;
   border: 2px solid transparent;
   border-radius: 999px;
   background: var(--choice-color);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
   cursor: pointer;
 }
 
@@ -390,7 +398,7 @@ html.live-capture #annotation-canvas {
 .menu-choice {
   height: 30px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: #eef2f7;
   font-size: 13px;

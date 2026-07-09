@@ -1,6 +1,6 @@
 {
   "name": "softshot",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A lightweight screenshot and screen recording tool.",
   "main": "dist/main.js",
   "author": "Akinsoft",
@@ -34,6 +34,7 @@
       "src/overlay.html",
       "src/settings.html",
       "src/settings.css",
+      "src/shared-ui.css",
       "src/styles.css",
       "package.json"
     ],
