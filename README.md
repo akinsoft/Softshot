@@ -20,9 +20,17 @@ Hit a shortcut, drag the exact region you want, mark it up, and save or copy it 
 
 ## Screenshots
 
-| Capture and annotate | Trim recordings |
-| --- | --- |
-| <img src="docs/assets/capture-overlay-windows-preview.svg" alt="Softshot capture overlay" width="100%"> | <img src="docs/assets/video-editor-windows-preview.svg" alt="Softshot video trim editor" width="100%"> |
+### Capture and annotate
+
+<p align="center">
+  <img src="docs/assets/capture-overlay-windows-preview.svg" alt="Softshot circling a highlighted spreadsheet result in a Windows capture overlay" width="100%">
+</p>
+
+### Record and trim
+
+<p align="center">
+  <img src="docs/assets/video-editor-windows-preview.svg" alt="Softshot trimming a Minecraft recording in its video editor" width="100%">
+</p>
 
 ## How It Works
 
@@ -61,4 +69,4 @@ npm run lint
 
 ## Project Status
 
-Softshot is early, practical, and intentionally small. The current app is focused on Windows desktop capture, region screenshots, cursor-free region recording, and simple WebM trimming.
+Softshot is early, practical, and intentionally small. The current app is focused on Windows desktop capture, region screenshots, cursor-free GPU recording, and quick trimming before sharing.

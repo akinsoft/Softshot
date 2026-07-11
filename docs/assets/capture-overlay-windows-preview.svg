@@ -1,127 +1,115 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
-  <title id="title">Softshot capture overlay Windows preview</title>
-  <desc id="desc">A Windows-style desktop with Softshot selecting a region, showing annotation tools and a clean capture toolbar.</desc>
+  <title id="title">Softshot annotating a spreadsheet in Windows</title>
+  <desc id="desc">A simple fake Chrome spreadsheet with anonymous data, a red Softshot pen circle, and a green Profit joke.</desc>
   <defs>
-    <linearGradient id="desktop-bg" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#0f3b5e" />
-      <stop offset="0.48" stop-color="#14557a" />
-      <stop offset="1" stop-color="#0e2435" />
-    </linearGradient>
-    <linearGradient id="window-surface" x1="0" y1="0" x2="0" y2="1">
-      <stop stop-color="#f8fafc" />
-      <stop offset="1" stop-color="#eef2f7" />
-    </linearGradient>
-    <linearGradient id="graph-line" x1="0" y1="0" x2="1" y2="0">
-      <stop stop-color="#2563eb" />
-      <stop offset="1" stop-color="#06b6d4" />
-    </linearGradient>
-    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="20" stdDeviation="18" flood-color="#02111f" flood-opacity="0.32" />
+    <filter id="window-shadow" x="-15%" y="-15%" width="130%" height="145%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#26323d" flood-opacity="0.26"/>
     </filter>
-    <mask id="cutout">
-      <rect width="1280" height="720" fill="#ffffff" />
-      <rect x="154" y="142" width="700" height="390" fill="#000000" />
+    <filter id="toolbar-shadow" x="-30%" y="-50%" width="160%" height="220%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000" flood-opacity="0.42"/>
+    </filter>
+    <mask id="selection-mask">
+      <rect width="1280" height="720" fill="#fff"/>
+      <rect x="88" y="172" width="1104" height="424" fill="#000"/>
     </mask>
   </defs>
 
-  <rect width="1280" height="720" fill="url(#desktop-bg)" />
-  <path d="M0 502 C190 456 322 491 486 442 C690 382 818 374 1016 413 C1121 433 1193 426 1280 391 V720 H0 Z" fill="#0b1b2b" opacity="0.22" />
-  <path d="M0 575 C174 536 312 550 474 512 C649 470 802 491 940 526 C1075 560 1181 550 1280 518 V720 H0 Z" fill="#ffffff" opacity="0.06" />
+  <rect width="1280" height="720" fill="#cfd5dc"/>
+  <rect y="672" width="1280" height="48" fill="#eef2f6" fill-opacity="0.96"/>
+  <line x1="0" y1="672" x2="1280" y2="672" stroke="#bac3cc"/>
+  <g transform="translate(604 684)" fill="#2a6fd6">
+    <rect width="13" height="13" rx="1"/><rect x="16" width="13" height="13" rx="1"/>
+    <rect y="16" width="13" height="13" rx="1"/><rect x="16" y="16" width="13" height="13" rx="1"/>
+  </g>
+  <circle cx="662" cy="698" r="10" fill="#f7c844"/><circle cx="698" cy="698" r="10" fill="#3c82df"/>
 
-  <g filter="url(#soft-shadow)">
-    <rect x="84" y="76" width="820" height="496" rx="10" fill="url(#window-surface)" />
-    <rect x="84" y="76" width="820" height="44" rx="10" fill="#f8fafc" />
-    <line x1="84" y1="120" x2="904" y2="120" stroke="#d6dde8" />
-    <text x="112" y="104" fill="#111827" font-family="Segoe UI, system-ui, sans-serif" font-size="13" font-weight="600">Roadmap Dashboard</text>
-    <path d="M806 98 H820" stroke="#475569" stroke-width="1.5" stroke-linecap="round" />
-    <rect x="842" y="91" width="13" height="13" fill="none" stroke="#475569" stroke-width="1.4" />
-    <path d="M878 92 L891 105 M891 92 L878 105" stroke="#475569" stroke-width="1.5" stroke-linecap="round" />
+  <g filter="url(#window-shadow)">
+    <rect x="54" y="64" width="1172" height="584" rx="10" fill="#fff"/>
+    <path d="M54 74a10 10 0 0 1 10-10h1152a10 10 0 0 1 10 10v40H54Z" fill="#dfe4e9"/>
+    <path d="M76 78h205a8 8 0 0 1 8 8v28H68V86a8 8 0 0 1 8-8Z" fill="#f8fafc"/>
+    <circle cx="91" cy="96" r="7" fill="#6f9ad2"/>
+    <rect x="108" y="90" width="92" height="7" rx="3.5" fill="#65717c"/>
+    <rect x="108" y="102" width="58" height="5" rx="2.5" fill="#a1aab2"/>
+    <path d="m268 91 10 10m0-10-10 10" stroke="#7b858e" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M1110 91h14" stroke="#4c5963" stroke-width="1.5" stroke-linecap="round"/>
+    <rect x="1149" y="84" width="13" height="13" fill="none" stroke="#4c5963" stroke-width="1.4"/>
+    <rect x="1184" y="64" width="42" height="50" rx="0" fill="#dfe4e9"/>
+    <path d="m1198 87 14 14m0-14-14 14" stroke="#4c5963" stroke-width="1.5" stroke-linecap="round"/>
 
-    <rect x="112" y="150" width="220" height="32" rx="7" fill="#e0f2fe" />
-    <text x="130" y="171" fill="#075985" font-family="Segoe UI, system-ui, sans-serif" font-size="13" font-weight="600">Sprint health</text>
-    <rect x="112" y="204" width="732" height="13" rx="6.5" fill="#cbd5e1" opacity="0.7" />
-    <rect x="112" y="230" width="610" height="13" rx="6.5" fill="#e2e8f0" />
-    <rect x="112" y="276" width="214" height="146" rx="10" fill="#ffffff" stroke="#d8e0ea" />
-    <rect x="352" y="276" width="214" height="146" rx="10" fill="#ffffff" stroke="#d8e0ea" />
-    <rect x="592" y="276" width="214" height="146" rx="10" fill="#ffffff" stroke="#d8e0ea" />
-    <path d="M138 383 L182 342 L226 363 L296 310" fill="none" stroke="url(#graph-line)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
-    <path d="M378 389 L430 335 L478 356 L536 314" fill="none" stroke="#16a34a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
-    <path d="M618 382 L669 351 L714 366 L778 317" fill="none" stroke="#e11d48" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
-    <rect x="112" y="458" width="492" height="16" rx="8" fill="#cbd5e1" opacity="0.7" />
-    <rect x="112" y="490" width="360" height="16" rx="8" fill="#e2e8f0" />
+    <rect x="54" y="114" width="1172" height="58" fill="#f7f8fa"/>
+    <line x1="54" y1="172" x2="1226" y2="172" stroke="#cdd4da"/>
+    <path d="m82 143 8-8m-8 8 8 8m20-8h16" fill="none" stroke="#6f7b85" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="150" y="128" width="818" height="31" rx="15.5" fill="#e7eaee"/>
+    <circle cx="171" cy="143.5" r="6" fill="none" stroke="#78838c" stroke-width="1.5"/>
+    <rect x="190" y="140" width="132" height="7" rx="3.5" fill="#919ba3"/>
+    <circle cx="1152" cy="143" r="12" fill="#81a5d3"/>
+    <circle cx="1187" cy="143" r="3" fill="#717c85"/>
+
+    <g transform="translate(88 172)">
+      <rect width="1104" height="424" fill="#fbfcfd"/>
+      <rect width="1104" height="46" fill="#f4f7f8"/>
+      <rect width="54" height="424" fill="#f2f5f6"/>
+      <line x1="54" y1="0" x2="54" y2="424" stroke="#c7d0d6"/>
+      <line x1="0" y1="46" x2="1104" y2="46" stroke="#c7d0d6"/>
+      <path d="M54 0v424M204 0v424M354 0v424M504 0v424M654 0v424M804 0v424M954 0v424M1104 0v424" stroke="#dbe1e5"/>
+      <path d="M0 46h1104M0 92h1104M0 138h1104M0 184h1104M0 230h1104M0 276h1104M0 322h1104M0 368h1104M0 414h1104" stroke="#dbe1e5"/>
+      <g fill="#69757e" font-family="Segoe UI, system-ui, sans-serif" font-size="12" text-anchor="middle">
+        <text x="129" y="29">A</text><text x="279" y="29">B</text><text x="429" y="29">C</text><text x="579" y="29">D</text><text x="729" y="29">E</text><text x="879" y="29">F</text><text x="1029" y="29">G</text>
+        <text x="27" y="76">1</text><text x="27" y="122">2</text><text x="27" y="168">3</text><text x="27" y="214">4</text><text x="27" y="260">5</text><text x="27" y="306">6</text><text x="27" y="352">7</text><text x="27" y="398">8</text>
+      </g>
+      <rect x="69" y="60" width="98" height="8" rx="4" fill="#31373c"/>
+      <circle cx="183" cy="64" r="4" fill="#31373c"/>
+      <rect x="222" y="60" width="72" height="8" rx="4" fill="#31373c"/>
+      <rect x="371" y="60" width="104" height="8" rx="4" fill="#31373c"/>
+      <circle cx="523" cy="64" r="4" fill="#31373c"/><circle cx="540" cy="64" r="4" fill="#31373c"/>
+      <rect x="69" y="106" width="64" height="7" rx="3.5" fill="#495157"/>
+      <circle cx="226" cy="110" r="4" fill="#495157"/><circle cx="243" cy="110" r="4" fill="#495157"/><circle cx="260" cy="110" r="4" fill="#495157"/>
+      <rect x="371" y="106" width="78" height="7" rx="3.5" fill="#495157"/>
+      <rect x="518" y="106" width="105" height="7" rx="3.5" fill="#495157"/>
+      <rect x="69" y="152" width="112" height="7" rx="3.5" fill="#495157"/>
+      <rect x="222" y="152" width="93" height="7" rx="3.5" fill="#495157"/>
+      <circle cx="376" cy="156" r="4" fill="#495157"/><circle cx="393" cy="156" r="4" fill="#495157"/>
+      <rect x="519" y="152" width="67" height="7" rx="3.5" fill="#495157"/>
+      <rect x="69" y="198" width="82" height="7" rx="3.5" fill="#495157"/>
+      <circle cx="226" cy="202" r="4" fill="#495157"/><circle cx="243" cy="202" r="4" fill="#495157"/>
+      <rect x="371" y="198" width="116" height="7" rx="3.5" fill="#495157"/>
+      <rect x="519" y="198" width="54" height="7" rx="3.5" fill="#495157"/>
+      <rect x="654" y="184" width="300" height="46" fill="#effaf1" stroke="#9fd7aa"/>
+      <text x="804" y="213" fill="#188447" font-family="Segoe UI, system-ui, sans-serif" font-size="20" font-weight="700" text-anchor="middle">$$ Profit!</text>
+      <rect x="69" y="244" width="91" height="7" rx="3.5" fill="#495157"/>
+      <rect x="222" y="244" width="64" height="7" rx="3.5" fill="#495157"/>
+      <rect x="371" y="244" width="92" height="7" rx="3.5" fill="#495157"/>
+      <circle cx="525" cy="248" r="4" fill="#495157"/><circle cx="542" cy="248" r="4" fill="#495157"/><circle cx="559" cy="248" r="4" fill="#495157"/>
+      <rect x="69" y="290" width="61" height="7" rx="3.5" fill="#495157"/>
+      <circle cx="226" cy="294" r="4" fill="#495157"/><circle cx="243" cy="294" r="4" fill="#495157"/>
+      <rect x="371" y="290" width="109" height="7" rx="3.5" fill="#495157"/>
+      <rect x="519" y="290" width="81" height="7" rx="3.5" fill="#495157"/>
+      <rect x="69" y="336" width="106" height="7" rx="3.5" fill="#495157"/>
+      <rect x="222" y="336" width="76" height="7" rx="3.5" fill="#495157"/>
+      <circle cx="376" cy="340" r="4" fill="#495157"/><circle cx="393" cy="340" r="4" fill="#495157"/>
+      <rect x="519" y="336" width="101" height="7" rx="3.5" fill="#495157"/>
+    </g>
   </g>
 
-  <g filter="url(#soft-shadow)">
-    <rect x="950" y="164" width="238" height="304" rx="12" fill="#f8fafc" />
-    <rect x="950" y="164" width="238" height="42" rx="12" fill="#ffffff" />
-    <line x1="950" y1="206" x2="1188" y2="206" stroke="#d6dde8" />
-    <text x="974" y="190" fill="#111827" font-family="Segoe UI, system-ui, sans-serif" font-size="13" font-weight="600">Notes</text>
-    <path d="M1110 185 H1123" stroke="#475569" stroke-width="1.4" stroke-linecap="round" />
-    <rect x="1144" y="179" width="12" height="12" fill="none" stroke="#475569" stroke-width="1.3" />
-    <path d="M1173 180 L1184 191 M1184 180 L1173 191" stroke="#475569" stroke-width="1.4" stroke-linecap="round" />
-    <rect x="974" y="236" width="164" height="18" rx="9" fill="#cbd5e1" />
-    <rect x="974" y="280" width="190" height="58" rx="10" fill="#eef2f7" />
-    <rect x="974" y="356" width="190" height="58" rx="10" fill="#eef2f7" />
-  </g>
+  <rect width="1280" height="672" fill="#090d10" opacity="0.48" mask="url(#selection-mask)"/>
+  <rect x="88" y="172" width="1104" height="424" fill="none" stroke="#fff" stroke-opacity="0.92"/>
+  <rect x="88" y="172" width="1104" height="424" fill="none" stroke="#38bdf8" stroke-width="3"/>
+  <rect x="82" y="166" width="12" height="12" rx="3" fill="#fff" stroke="#38bdf8" stroke-width="2"/>
+  <rect x="1186" y="590" width="12" height="12" rx="3" fill="#fff" stroke="#38bdf8" stroke-width="2"/>
+  <path d="M714 338c55-34 205-35 277 0 62 30 55 83-14 103-77 23-211 13-257-25-39-33-21-65 39-86" fill="none" stroke="#ef334f" stroke-width="8" stroke-linecap="round"/>
 
-  <rect y="672" width="1280" height="48" fill="#101722" opacity="0.96" />
-  <line x1="0" y1="672" x2="1280" y2="672" stroke="#1f2937" />
-
-  <rect width="1280" height="672" fill="#020617" opacity="0.48" mask="url(#cutout)" />
-  <rect x="154" y="142" width="700" height="390" fill="none" stroke="#f8fafc" stroke-width="1.4" />
-  <rect x="154" y="142" width="700" height="390" fill="none" stroke="#38bdf8" stroke-width="3" />
-  <rect x="148" y="136" width="12" height="12" rx="3" fill="#ffffff" stroke="#38bdf8" stroke-width="2" />
-  <rect x="848" y="526" width="12" height="12" rx="3" fill="#ffffff" stroke="#38bdf8" stroke-width="2" />
-  <circle cx="354" cy="340" r="54" fill="none" stroke="#38bdf8" stroke-width="7" stroke-linecap="round" />
-  <path d="M332 324 L332 324 M376 324 L376 324" fill="none" stroke="#38bdf8" stroke-width="10" stroke-linecap="round" />
-  <path d="M319 356 C338 378 371 378 390 356" fill="none" stroke="#38bdf8" stroke-width="7" stroke-linecap="round" />
-  <path d="M658 248 L420 322" fill="none" stroke="#f43f5e" stroke-width="8" stroke-linecap="round" />
-  <path d="M420 322 L454 295 M420 322 L462 338" fill="none" stroke="#f43f5e" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
-
-  <g filter="url(#soft-shadow)">
-    <rect x="472" y="12" width="336" height="54" rx="8" fill="#0d0e10" opacity="0.94" stroke="#ffffff" stroke-opacity="0.22" />
-
-    <rect x="478" y="18" width="42" height="42" rx="7" fill="#38bdf8" fill-opacity="0.18" stroke="#38bdf8" stroke-opacity="0.35" />
-    <g transform="translate(487.5 27.5)" fill="none" stroke="#f4f7fb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M8 7.5 9.4 5h5.2L16 7.5h2.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5V10a2.5 2.5 0 0 1 2.5-2.5H8Z" />
-      <circle cx="12" cy="13.5" r="3.6" />
-    </g>
-
-    <rect x="525" y="18" width="42" height="42" rx="7" fill="transparent" />
-    <g transform="translate(534.5 27.5)" fill="none" stroke="#f4f7fb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="3" y="6" width="12" height="12" rx="2.5" />
-      <path d="m15.5 10 5-3v10l-5-3Z" />
-    </g>
-
-    <rect x="572" y="18" width="42" height="42" rx="7" fill="#38bdf8" fill-opacity="0.18" stroke="#38bdf8" stroke-opacity="0.35" />
-    <g transform="translate(581.5 27.5)" fill="none" stroke="#f4f7fb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="m4 20 4.4-1 9.9-9.9-3.4-3.4L5 15.6 4 20Z" />
-      <path d="m13.4 7.2 3.4 3.4" />
-      <path d="m16 4.6 1.1-1.1a1.8 1.8 0 0 1 2.6 0l.8.8a1.8 1.8 0 0 1 0 2.6L19.4 8" />
-    </g>
-    <rect x="598" y="54" width="16" height="3" rx="1.5" fill="#38bdf8" />
-
-    <rect x="619" y="18" width="42" height="42" rx="7" fill="transparent" />
-    <g transform="translate(628.5 27.5)" fill="none" stroke="#f4f7fb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M5 19 18.5 5.5" />
-      <path d="M10.5 5.5h8v8" />
-    </g>
-    <rect x="645" y="54" width="16" height="3" rx="1.5" fill="#38bdf8" />
-
-    <rect x="666" y="18" width="42" height="42" rx="7" fill="transparent" />
-    <circle cx="687" cy="39" r="11" fill="#38bdf8" stroke="#ffffff" stroke-width="2" />
-    <circle cx="687" cy="39" r="8" fill="none" stroke="#000000" stroke-opacity="0.25" stroke-width="2" />
-
-    <rect x="713" y="18" width="42" height="42" rx="7" fill="transparent" />
-    <g transform="translate(722.5 27.5)" fill="none" stroke="#f4f7fb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.75 1.75 0 0 0 .35 1.93l.05.05a2.1 2.1 0 0 1-2.97 2.97l-.05-.05a1.75 1.75 0 0 0-1.93-.35 1.75 1.75 0 0 0-1.06 1.6V21.3a2.1 2.1 0 0 1-4.2 0v-.07a1.75 1.75 0 0 0-1.14-1.6 1.75 1.75 0 0 0-1.93.35l-.05.05a2.1 2.1 0 0 1-2.97-2.97l.05-.05A1.75 1.75 0 0 0 4.6 15a1.75 1.75 0 0 0-1.6-1.06h-.1a2.1 2.1 0 0 1 0-4.2h.1A1.75 1.75 0 0 0 4.6 8.6a1.75 1.75 0 0 0-.35-1.93l-.05-.05a2.1 2.1 0 0 1 2.97-2.97l.05.05A1.75 1.75 0 0 0 9.15 4a1.75 1.75 0 0 0 1.06-1.6V2.3a2.1 2.1 0 0 1 4.2 0v.07A1.75 1.75 0 0 0 15.47 4a1.75 1.75 0 0 0 1.93-.35l.05-.05a2.1 2.1 0 0 1 2.97 2.97l-.05.05A1.75 1.75 0 0 0 19.4 8.6a1.75 1.75 0 0 0 1.6 1.06h.1a2.1 2.1 0 0 1 0 4.2h-.1A1.75 1.75 0 0 0 19.4 15Z" />
-    </g>
-
-    <rect x="760" y="18" width="42" height="42" rx="7" fill="transparent" />
-    <g transform="translate(769.5 27.5)" fill="none" stroke="#f4f7fb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M6 6 18 18" />
-      <path d="M18 6 6 18" />
-    </g>
+  <g filter="url(#toolbar-shadow)">
+    <rect x="472" y="12" width="336" height="54" rx="8" fill="#0d0e10" fill-opacity="0.96" stroke="#fff" stroke-opacity="0.22"/>
+    <rect x="478" y="18" width="42" height="42" rx="7" fill="#38bdf8" fill-opacity="0.18" stroke="#38bdf8" stroke-opacity="0.4"/>
+    <g transform="translate(487.5 27.5)" fill="none" stroke="#f4f7fb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7.5 9.4 5h5.2L16 7.5h2.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5V10a2.5 2.5 0 0 1 2.5-2.5H8Z"/><circle cx="12" cy="13.5" r="3.6"/></g>
+    <g transform="translate(534.5 27.5)" fill="none" stroke="#f4f7fb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="12" height="12" rx="2.5"/><path d="m15.5 10 5-3v10l-5-3Z"/></g>
+    <rect x="572" y="18" width="42" height="42" rx="7" fill="#ef334f" fill-opacity="0.18" stroke="#ef334f" stroke-opacity="0.45"/>
+    <g transform="translate(581.5 27.5)" fill="none" stroke="#f4f7fb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 20 4.4-1 9.9-9.9-3.4-3.4L5 15.6 4 20Z"/><path d="m13.4 7.2 3.4 3.4"/><path d="m16 4.6 1.1-1.1a1.8 1.8 0 0 1 2.6 0l.8.8a1.8 1.8 0 0 1 0 2.6L19.4 8"/></g>
+    <rect x="598" y="54" width="16" height="3" rx="1.5" fill="#ef334f"/>
+    <g transform="translate(628.5 27.5)" fill="none" stroke="#f4f7fb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19 18.5 5.5"/><path d="M10.5 5.5h8v8"/></g>
+    <rect x="645" y="54" width="16" height="3" rx="1.5" fill="#ef334f"/>
+    <circle cx="687" cy="39" r="11" fill="#ef334f" stroke="#fff" stroke-width="2"/>
+    <g transform="translate(722.5 27.5)" fill="none" stroke="#f4f7fb" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4M5 5l3 3m8 8 3 3m0-14-3 3M8 16l-3 3"/></g>
+    <g transform="translate(769.5 27.5)" fill="none" stroke="#f4f7fb" stroke-width="1.8" stroke-linecap="round"><path d="M6 6 18 18M18 6 6 18"/></g>
   </g>
 </svg>
