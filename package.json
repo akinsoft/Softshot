@@ -1,6 +1,6 @@
 {
   "name": "softshot",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "A lightweight screenshot and screen recording tool.",
   "main": "dist/main.js",
   "author": "Akinsoft",
@@ -10,71 +10,6 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/akinsoft/Softshot.git"
-  },
-  "scripts": {
-    "build": "npm run clean && tsc -p tsconfig.main.json && tsc -p tsconfig.browser.json",
-    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "dev": "npm run build && electron .",
-    "lint": "eslint src --max-warnings=0",
-    "lint:fix": "eslint src --fix --max-warnings=0",
-    "package": "npm run build && electron-builder --win nsis",
-    "release": "npm run build && electron-builder --win nsis --publish always",
-    "start": "npm run build && electron ."
-  },
-  "build": {
-    "appId": "com.akinsoft.softshot",
-    "productName": "Softshot",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "src/assets/**/*",
-      "src/editor.html",
-      "src/editor.css",
-      "src/overlay.html",
-      "src/settings.html",
-      "src/settings.css",
-      "src/shared-ui.css",
-      "src/styles.css",
-      "LICENSE.md",
-      "package.json"
-    ],
-    "win": {
-      "icon": "src/assets/app-logo.ico",
-      "target": "nsis"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true
-    },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "akinsoft",
-        "repo": "Softshot",
-        "releaseType": "release"
-      }
-    ]
-  },
-  "devDependencies": {
-    "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
-    "@eslint/js": "^10.0.1",
-    "@types/node": "^24.0.0",
-    "electron": "^43.1.0",
-    "electron-builder": "^26.15.3",
-    "eslint": "^10.6.0",
-    "eslint-plugin-n": "^18.2.1",
-    "eslint-plugin-promise": "^7.3.0",
-    "eslint-plugin-regexp": "^3.1.1",
-    "eslint-plugin-simple-import-sort": "^13.0.0",
-    "eslint-plugin-sonarjs": "^4.1.0",
-    "eslint-plugin-unicorn": "^71.1.0",
-    "eslint-plugin-unused-imports": "^4.4.1",
-    "globals": "^17.7.0",
-    "typescript": "^5.5.4",
-    "typescript-eslint": "^8.63.0"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
