@@ -4,10 +4,6 @@ Softshot is a lightweight Windows screenshot and screen recording tool built for
 
 Hit a shortcut, drag the exact region you want, mark it up, and save or copy it without falling into a full editing suite.
 
-<p align="center">
-  <img src="docs/assets/capture-overlay-windows-preview.svg" alt="Softshot capture overlay with a selected region and annotation tools" width="100%">
-</p>
-
 ## Why Softshot
 
 - Fast capture flow: press `PrintScreen`, select an area, and save with `Enter` or copy with `Ctrl+C`.
@@ -18,19 +14,11 @@ Hit a shortcut, drag the exact region you want, mark it up, and save or copy it 
 - Local-first sharing: no account, cloud workspace, or project library between the capture and your clipboard.
 - Tray-first desktop app: Softshot stays out of the way until you need it.
 
-## Screenshots
+## Showcase
 
-### Capture and annotate
-
-<p align="center">
-  <img src="docs/assets/capture-overlay-windows-preview.svg" alt="Softshot circling a highlighted spreadsheet result in a Windows capture overlay" width="100%">
-</p>
-
-### Record and trim
-
-<p align="center">
-  <img src="docs/assets/video-editor-windows-preview.svg" alt="Softshot trimming a Minecraft recording in its video editor" width="100%">
-</p>
+| Capture and annotate | Record and trim |
+| --- | --- |
+| <img src="docs/assets/capture-overlay-windows-preview.svg" alt="Softshot circling a highlighted spreadsheet result in a Windows capture overlay" width="100%"> | <img src="docs/assets/video-editor-windows-preview.svg" alt="Softshot trimming a Minecraft recording in its video editor" width="100%"> |
 
 ## How It Works
 
