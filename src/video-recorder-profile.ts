@@ -1,14 +1,13 @@
 import type { RecordingEncoder, VideoFileExtension, VideoFps } from "./shared.js";
+import { hardwareVideoCodecs } from "./video-codecs.js";
 
 export interface VideoRecorderProfile {
   encoder: RecordingEncoder;
   fileExtension: VideoFileExtension;
+  hardwareVideoCodec: string | null;
   mimeType: string;
 }
 
-const hardwareVideoCodec = "avc1.640028";
-const hardwareVideoMimeType = `video/mp4;codecs=${hardwareVideoCodec}`;
-const hardwareAudioVideoMimeType = `${hardwareVideoMimeType},mp4a.40.2`;
 const audioBitrate = 192_000;
 const audioChannelCount = 2;
 const audioSampleRate = 48_000;
@@ -28,15 +27,7 @@ export async function selectVideoRecorderProfile(
   hasAudio: boolean
 ): Promise<VideoRecorderProfile> {
   if (typeof VideoEncoder !== "undefined") {
-    const videoSupport = await VideoEncoder.isConfigSupported({
-      bitrate,
-      codec: hardwareVideoCodec,
-      framerate: fps,
-      hardwareAcceleration: "prefer-hardware",
-      height,
-      latencyMode: "realtime",
-      width
-    });
+    const hardwareVideoCodec = await supportedHardwareVideoCodec(width, height, fps, bitrate);
     let isAudioSupported = !hasAudio;
     if (hasAudio && typeof AudioEncoder !== "undefined") {
       const audioSupport = await AudioEncoder.isConfigSupported({
@@ -47,11 +38,13 @@ export async function selectVideoRecorderProfile(
       });
       isAudioSupported = audioSupport.supported ?? false;
     }
-    if (videoSupport.supported && isAudioSupported) {
+    if (hardwareVideoCodec && isAudioSupported) {
+      const hardwareVideoMimeType = `video/mp4;codecs=${hardwareVideoCodec}`;
       return {
         encoder: "hardware",
         fileExtension: "mp4",
-        mimeType: hasAudio ? hardwareAudioVideoMimeType : hardwareVideoMimeType
+        hardwareVideoCodec,
+        mimeType: hasAudio ? `${hardwareVideoMimeType},mp4a.40.2` : hardwareVideoMimeType
       };
     }
   }
@@ -65,6 +58,31 @@ export async function selectVideoRecorderProfile(
   return {
     encoder: "compatibility",
     fileExtension: "webm",
+    hardwareVideoCodec: null,
     mimeType
   };
+}
+
+async function supportedHardwareVideoCodec(
+  width: number,
+  height: number,
+  fps: VideoFps,
+  bitrate: number
+): Promise<string | null> {
+  for (const codec of hardwareVideoCodecs) {
+    const support = await VideoEncoder.isConfigSupported({
+      bitrate,
+      codec,
+      framerate: fps,
+      hardwareAcceleration: "prefer-hardware",
+      height,
+      latencyMode: "realtime",
+      width
+    });
+    if (support.supported) {
+      return codec;
+    }
+  }
+
+  return null;
 }

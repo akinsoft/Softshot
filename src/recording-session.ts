@@ -21,7 +21,6 @@ const minimumVideoDimensionPx = 2;
 const millisecondsPerSecond = 1000;
 const supportedAudioMimeTypes = ["audio/webm;codecs=opus", "audio/webm"] as const;
 const hardwareVideoCodec = "avc";
-const hardwareVideoCodecString = "avc1.640028";
 const hardwareAudioBitrate = 192_000;
 const hardwareKeyframeIntervalSeconds = 2;
 const hardwareFragmentDurationSeconds = 1;
@@ -106,7 +105,14 @@ export class RecordingSession {
       }
 
       const hardwareRecording = profile.encoder === "hardware"
-        ? createHardwareRecording(videoOutput, embeddedAudioMix.track, config.fps, bitrate, videoWriter)
+        ? createHardwareRecording(
+          videoOutput,
+          embeddedAudioMix.track,
+          config.fps,
+          bitrate,
+          profile.hardwareVideoCodec,
+          videoWriter
+        )
         : null;
       const recorder = hardwareRecording
         ? null
@@ -502,8 +508,13 @@ function createHardwareRecording(
   audioTrack: MediaStreamTrack | null,
   fps: VideoFps,
   bitrate: number,
+  fullHardwareVideoCodec: string | null,
   writer: RecordingFileWriter
 ): HardwareRecording {
+  if (!fullHardwareVideoCodec) {
+    throw new Error("Hardware recording requires a supported AVC codec.");
+  }
+
   const output = new Output({
     format: new Mp4OutputFormat({
       fastStart: "fragmented",
@@ -515,7 +526,7 @@ function createHardwareRecording(
     bitrate,
     codec: hardwareVideoCodec,
     contentHint: "detail",
-    fullCodecString: hardwareVideoCodecString,
+    fullCodecString: fullHardwareVideoCodec,
     hardwareAcceleration: "prefer-hardware",
     keyFrameInterval: hardwareKeyframeIntervalSeconds,
     latencyMode: "realtime"

@@ -1,5 +1,6 @@
 import type { AudioSourceKind, VideoFps } from "./shared.js";
 import { exportedVideoBitrate } from "./video-bitrate.js";
+import { hardwareVideoCodecs } from "./video-codecs.js";
 import { hasWebmCluster } from "./webm.js";
 
 const minimumOutputDimensionPx = 2;
@@ -11,11 +12,11 @@ const supportedAudioVideoMimeTypes = [
   "video/webm"
 ] as const;
 const supportedMp4MimeTypes = [
-  "video/mp4;codecs=avc1.640028",
+  ...hardwareVideoCodecs.map((codec) => `video/mp4;codecs=${codec}`),
   "video/mp4;codecs=avc1.42E01E"
 ] as const;
 const supportedAudioVideoMp4MimeTypes = [
-  "video/mp4;codecs=avc1.640028,mp4a.40.2",
+  ...hardwareVideoCodecs.map((codec) => `video/mp4;codecs=${codec},mp4a.40.2`),
   "video/mp4;codecs=avc1.42E01E,mp4a.40.2"
 ] as const;
 
