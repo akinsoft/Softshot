@@ -112,3 +112,75 @@ test("shared recording files expire sooner than unsaved recovery files", () => {
   assert.equal(shortLivedRecordingRetentionMs, 20 * 60 * 1000);
   assert.equal(standardRecordingRetentionMs, 7 * 24 * 60 * 60 * 1000);
 });
+
+test("editor timeline cuts preserve source positions and close deleted gaps", async () => {
+  const {
+    deleteTimelineSegment,
+    sourceRangesForTimelineRange,
+    splitTimelineAt,
+    timelineDuration,
+    timelineLocationAt,
+    timelineSegmentBounds,
+    timelineTimeAfterDeletion
+  } = await importDist("editor-timeline");
+
+  let segments = [{ id: 1, sourceEnd: 60, sourceStart: 0 }];
+  segments = splitTimelineAt(segments, 20, 2, 0.05).segments;
+  segments = splitTimelineAt(segments, 40, 3, 0.05).segments;
+
+  assert.deepEqual(segments, [
+    { id: 1, sourceEnd: 20, sourceStart: 0 },
+    { id: 2, sourceEnd: 40, sourceStart: 20 },
+    { id: 3, sourceEnd: 60, sourceStart: 40 }
+  ]);
+  assert.deepEqual(timelineLocationAt(segments, 20), {
+    segment: segments[1],
+    segmentIndex: 1,
+    sourceTime: 20,
+    timelineEnd: 40,
+    timelineStart: 20
+  });
+  assert.deepEqual(sourceRangesForTimelineRange(segments, { end: 60, start: 0 }), [
+    { end: 60, start: 0 }
+  ]);
+
+  const deletedRange = timelineSegmentBounds(segments, 2);
+  segments = deleteTimelineSegment(segments, 2);
+  assert.equal(timelineDuration(segments), 40);
+  assert.equal(timelineTimeAfterDeletion(45, deletedRange), 25);
+  assert.deepEqual(sourceRangesForTimelineRange(segments, { end: 40, start: 0 }), [
+    { end: 20, start: 0 },
+    { end: 60, start: 40 }
+  ]);
+});
+
+test("editor timeline trims across cuts and rejects destructive edge cases", async () => {
+  const {
+    deleteTimelineSegment,
+    sourceRangesForTimelineRange,
+    splitTimelineAt
+  } = await importDist("editor-timeline");
+  const segments = [
+    { id: 1, sourceEnd: 20, sourceStart: 0 },
+    { id: 3, sourceEnd: 60, sourceStart: 40 }
+  ];
+
+  assert.deepEqual(sourceRangesForTimelineRange(segments, { end: 25, start: 10 }), [
+    { end: 20, start: 10 },
+    { end: 45, start: 40 }
+  ]);
+  assert.throws(() => splitTimelineAt(segments, 0.01, 4, 0.05), /farther away/);
+  assert.throws(() => deleteTimelineSegment([segments[0]], 1), /final timeline segment/);
+});
+
+test("audio waveforms follow retained timeline sections", async () => {
+  const { timelineWaveformPeaks } = await importDist("editor-waveform-view");
+  const sourcePeaks = [0, 0.1, 0.2, 0.3, 0.4, 0.5];
+  const segments = [
+    { id: 1, sourceEnd: 2, sourceStart: 0 },
+    { id: 2, sourceEnd: 6, sourceStart: 4 }
+  ];
+
+  assert.deepEqual(timelineWaveformPeaks(sourcePeaks, 6, segments, 4), [0, 0.1, 0.4, 0.5]);
+  assert.throws(() => timelineWaveformPeaks([], 6, segments, 4), /normalized finite values/);
+});
